@@ -49,9 +49,9 @@ interface PRReport {
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 const EXAMPLE_PRS = [
-  'facebook/react#31479',
-  'microsoft/vscode#200000',
-  'vercel/next.js#60000',
+  '8451LLC/effoprice#21',
+  '8451LLC/effoprice#62',
+  '8451LLC/map-mdf-dlt-streaming#139',
 ];
 
 interface BatchResult {
