@@ -48,8 +48,24 @@ CREATE TABLE IF NOT EXISTS pr_reports (
     UNIQUE(pr_id)
 );
 
+-- Batch Analyses table
+CREATE TABLE IF NOT EXISTS batch_analyses (
+    id SERIAL PRIMARY KEY,
+    batch_token VARCHAR(255) NOT NULL UNIQUE,
+    pr_list JSONB NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    completed_count INTEGER DEFAULT 0,
+    total_count INTEGER DEFAULT 0,
+    results JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP,
+    error_message TEXT
+);
+
 -- Indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_pr_org_repo ON pull_requests(org, repo);
 CREATE INDEX IF NOT EXISTS idx_pr_comments_pr_id ON pr_comments(pr_id);
 CREATE INDEX IF NOT EXISTS idx_pr_reviews_pr_id ON pr_reviews(pr_id);
 CREATE INDEX IF NOT EXISTS idx_pr_reports_pr_id ON pr_reports(pr_id);
+CREATE INDEX IF NOT EXISTS idx_batch_token ON batch_analyses(batch_token);
+CREATE INDEX IF NOT EXISTS idx_batch_status ON batch_analyses(status);

@@ -1,5 +1,5 @@
 import sql from '../db/connection';
-import type { PullRequest, PRComment, PRReview, PRReport } from '../types';
+import type { PullRequest, PRComment, PRReview, PRReport, BatchAnalysis, BatchResult } from '../types';
 
 export class DatabaseService {
   async initializeSchema() {
@@ -79,5 +79,60 @@ export class DatabaseService {
       SELECT * FROM pr_reports WHERE pr_id = ${prId}
     `;
     return result.length > 0 ? result[0] as PRReport : null;
+  }
+
+  async createBatch(batch: BatchAnalysis): Promise<string> {
+    const result = await sql`
+      INSERT INTO batch_analyses (batch_token, pr_list, status, total_count, completed_count)
+      VALUES (${batch.batch_token}, ${JSON.stringify(batch.pr_list)}, 'pending', ${batch.total_count}, 0)
+      RETURNING batch_token
+    `;
+    return result[0].batch_token;
+  }
+
+  async getBatch(batchToken: string): Promise<BatchAnalysis | null> {
+    const result = await sql`
+      SELECT * FROM batch_analyses WHERE batch_token = ${batchToken}
+    `;
+    if (result.length === 0) return null;
+    
+    const batch = result[0] as any;
+    return {
+      ...batch,
+      pr_list: typeof batch.pr_list === 'string' ? JSON.parse(batch.pr_list) : batch.pr_list,
+      results: batch.results ? (typeof batch.results === 'string' ? JSON.parse(batch.results) : batch.results) : undefined,
+    };
+  }
+
+  async updateBatchProgress(batchToken: string, completedCount: number, results: BatchResult[]): Promise<void> {
+    await sql`
+      UPDATE batch_analyses 
+      SET completed_count = ${completedCount}, results = ${JSON.stringify(results)}
+      WHERE batch_token = ${batchToken}
+    `;
+  }
+
+  async completeBatch(batchToken: string, results: BatchResult[]): Promise<void> {
+    await sql`
+      UPDATE batch_analyses 
+      SET status = 'completed', completed_at = NOW(), results = ${JSON.stringify(results)}
+      WHERE batch_token = ${batchToken}
+    `;
+  }
+
+  async failBatch(batchToken: string, errorMessage: string): Promise<void> {
+    await sql`
+      UPDATE batch_analyses 
+      SET status = 'failed', error_message = ${errorMessage}, completed_at = NOW()
+      WHERE batch_token = ${batchToken}
+    `;
+  }
+
+  async startBatchProcessing(batchToken: string): Promise<void> {
+    await sql`
+      UPDATE batch_analyses 
+      SET status = 'processing'
+      WHERE batch_token = ${batchToken}
+    `;
   }
 }

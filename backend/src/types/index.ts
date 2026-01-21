@@ -45,3 +45,26 @@ export interface PRAnalysisData {
   comments: PRComment[];
   reviews: PRReview[];
 }
+
+export interface BatchAnalysis {
+  id?: number;
+  batch_token: string;
+  pr_list: Array<{ org: string; repo: string; pr_number: number }>;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  completed_count: number;
+  total_count: number;
+  results?: BatchResult[];
+  created_at?: string;
+  completed_at?: string;
+  error_message?: string;
+}
+
+export interface BatchResult {
+  org: string;
+  repo: string;
+  pr_number: number;
+  success: boolean;
+  pr?: PullRequest;
+  report?: PRReport;
+  error?: string;
+}
