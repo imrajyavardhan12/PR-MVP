@@ -69,3 +69,7 @@ CREATE INDEX IF NOT EXISTS idx_pr_reviews_pr_id ON pr_reviews(pr_id);
 CREATE INDEX IF NOT EXISTS idx_pr_reports_pr_id ON pr_reports(pr_id);
 CREATE INDEX IF NOT EXISTS idx_batch_token ON batch_analyses(batch_token);
 CREATE INDEX IF NOT EXISTS idx_batch_status ON batch_analyses(status);
+CREATE INDEX IF NOT EXISTS idx_pr_author ON pull_requests(author);
+CREATE INDEX IF NOT EXISTS idx_pr_created_at ON pull_requests(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pr_report_generated_at ON pr_reports(generated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pr_state ON pull_requests(state);

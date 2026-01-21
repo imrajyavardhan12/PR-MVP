@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { DatabaseService } from '../services/database.service';
 import { GitHubService } from '../services/github.service';
 import { OpenAIService } from '../services/openai.service';
+import historyRoutes from './history.routes';
 
 const prRoutes = new Hono();
 
@@ -121,5 +122,8 @@ prRoutes.get('/report/:org/:repo/:pr_number', async (c) => {
     }, 500);
   }
 });
+
+// History routes
+prRoutes.route('/', historyRoutes);
 
 export default prRoutes;

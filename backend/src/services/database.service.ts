@@ -135,4 +135,146 @@ export class DatabaseService {
       WHERE batch_token = ${batchToken}
     `;
   }
+
+  async getPRHistory(
+    limit: number = 20,
+    offset: number = 0,
+    sortBy: 'generated_at' | 'created_at' | 'author' = 'generated_at'
+  ): Promise<Array<PullRequest & { generated_at?: string }>> {
+    const orderBy = 
+      sortBy === 'generated_at' ? 'pr_reports.generated_at DESC' :
+      sortBy === 'created_at' ? 'pull_requests.created_at DESC' :
+      'pull_requests.author ASC';
+
+    const result = await sql`
+      SELECT DISTINCT 
+        pr.*,
+        pr_reports.generated_at
+      FROM pull_requests pr
+      LEFT JOIN pr_reports ON pr.id = pr_reports.pr_id
+      ORDER BY ${sql.unsafe(orderBy)}
+      LIMIT ${limit}
+      OFFSET ${offset}
+    `;
+    return result as Array<PullRequest & { generated_at?: string }>;
+  }
+
+  async getPRHistoryCount(): Promise<number> {
+    const result = await sql`
+      SELECT COUNT(DISTINCT pr.id) as count FROM pull_requests pr
+    `;
+    return result[0].count as number;
+  }
+
+  async searchPRHistory(
+    searchQuery?: string,
+    filters?: {
+      repo?: string;
+      author?: string;
+      state?: string;
+      startDate?: string;
+      endDate?: string;
+    },
+    limit: number = 20,
+    offset: number = 0,
+    sortBy: 'generated_at' | 'created_at' | 'author' = 'generated_at'
+  ): Promise<Array<PullRequest & { generated_at?: string }>> {
+    let query = sql`
+      SELECT DISTINCT 
+        pr.*,
+        pr_reports.generated_at
+      FROM pull_requests pr
+      LEFT JOIN pr_reports ON pr.id = pr_reports.pr_id
+      WHERE 1=1
+    `;
+
+    // Search query (matches PR number, title, author)
+    if (searchQuery) {
+      query = sql`${query}
+        AND (
+          pr.pr_number::text LIKE ${`%${searchQuery}%`}
+          OR pr.title ILIKE ${`%${searchQuery}%`}
+          OR pr.author ILIKE ${`%${searchQuery}%`}
+        )
+      `;
+    }
+
+    // Filters
+    if (filters?.repo) {
+      query = sql`${query} AND pr.repo ILIKE ${`%${filters.repo}%`}`;
+    }
+    if (filters?.author) {
+      query = sql`${query} AND pr.author ILIKE ${`%${filters.author}%`}`;
+    }
+    if (filters?.state) {
+      query = sql`${query} AND pr.state = ${filters.state}`;
+    }
+    if (filters?.startDate) {
+      query = sql`${query} AND pr.created_at >= ${filters.startDate}`;
+    }
+    if (filters?.endDate) {
+      query = sql`${query} AND pr.created_at <= ${filters.endDate}`;
+    }
+
+    // Sort
+    const orderBy = 
+      sortBy === 'generated_at' ? 'pr_reports.generated_at DESC' :
+      sortBy === 'created_at' ? 'pull_requests.created_at DESC' :
+      'pull_requests.author ASC';
+
+    query = sql`${query}
+      ORDER BY ${sql.unsafe(orderBy)}
+      LIMIT ${limit}
+      OFFSET ${offset}
+    `;
+
+    const result = await query;
+    return result as Array<PullRequest & { generated_at?: string }>;
+  }
+
+  async searchPRHistoryCount(
+    searchQuery?: string,
+    filters?: {
+      repo?: string;
+      author?: string;
+      state?: string;
+      startDate?: string;
+      endDate?: string;
+    }
+  ): Promise<number> {
+    let query = sql`
+      SELECT COUNT(DISTINCT pr.id) as count FROM pull_requests pr
+      LEFT JOIN pr_reports ON pr.id = pr_reports.pr_id
+      WHERE 1=1
+    `;
+
+    if (searchQuery) {
+      query = sql`${query}
+        AND (
+          pr.pr_number::text LIKE ${`%${searchQuery}%`}
+          OR pr.title ILIKE ${`%${searchQuery}%`}
+          OR pr.author ILIKE ${`%${searchQuery}%`}
+        )
+      `;
+    }
+
+    if (filters?.repo) {
+      query = sql`${query} AND pr.repo ILIKE ${`%${filters.repo}%`}`;
+    }
+    if (filters?.author) {
+      query = sql`${query} AND pr.author ILIKE ${`%${filters.author}%`}`;
+    }
+    if (filters?.state) {
+      query = sql`${query} AND pr.state = ${filters.state}`;
+    }
+    if (filters?.startDate) {
+      query = sql`${query} AND pr.created_at >= ${filters.startDate}`;
+    }
+    if (filters?.endDate) {
+      query = sql`${query} AND pr.created_at <= ${filters.endDate}`;
+    }
+
+    const result = await query;
+    return result[0].count as number;
+  }
 }

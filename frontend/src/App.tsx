@@ -19,8 +19,10 @@ import {
   Database,
   Zap,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  History
 } from 'lucide-react';
+import HistoryDashboard from './HistoryDashboard';
 import './App.css';
 
 interface PRReport {
@@ -70,7 +72,7 @@ interface BatchProgress {
 }
 
 function App() {
-  const [tab, setTab] = useState<'single' | 'bulk'>('single');
+  const [tab, setTab] = useState<'single' | 'bulk' | 'history'>('single');
   const [prInput, setPrInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -289,6 +291,19 @@ function App() {
               <span className="flex items-center gap-2">
                 <Zap className="w-4 h-4" />
                 Bulk Analysis
+              </span>
+            </button>
+            <button
+              onClick={() => setTab('history')}
+              className={`pb-4 px-2 font-medium text-sm transition-colors border-b-2 ${
+                tab === 'history'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <History className="w-4 h-4" />
+                PR History
               </span>
             </button>
           </div>
@@ -737,6 +752,28 @@ function App() {
              </div>
            </div>
          )}
+         </>
+        )}
+
+        {/* History Tab */}
+        {tab === 'history' && (
+         <>
+         <HistoryDashboard 
+           onSelectPR={(pr) => {
+             // Fetch the full report for this PR
+             fetch(`${API_URL}/api/pr/report/${pr.org}/${pr.repo}/${pr.pr_number}`)
+               .then(res => res.json())
+               .then(data => {
+                 setResult({
+                   pr: data.pr,
+                   report: data.report,
+                   cached: true
+                 });
+                 setTab('single');
+               })
+               .catch(err => console.error('Failed to load PR report:', err));
+           }}
+         />
          </>
         )}
       </main>
