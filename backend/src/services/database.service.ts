@@ -179,56 +179,58 @@ export class DatabaseService {
     offset: number = 0,
     sortBy: 'generated_at' | 'created_at' | 'author' = 'generated_at'
   ): Promise<Array<PullRequest & { generated_at?: string }>> {
-    let query = sql`
+    let whereConditions = ['1=1'];
+    const params: any[] = [];
+
+    // Search query (matches PR number, title, author)
+    if (searchQuery) {
+      whereConditions.push(
+        `(pr.pr_number::text LIKE $${params.length + 1} OR pr.title ILIKE $${params.length + 2} OR pr.author ILIKE $${params.length + 3})`
+      );
+      params.push(`%${searchQuery}%`, `%${searchQuery}%`, `%${searchQuery}%`);
+    }
+
+    // Filters
+    if (filters?.repo) {
+      whereConditions.push(`pr.repo ILIKE $${params.length + 1}`);
+      params.push(`%${filters.repo}%`);
+    }
+    if (filters?.author) {
+      whereConditions.push(`pr.author ILIKE $${params.length + 1}`);
+      params.push(`%${filters.author}%`);
+    }
+    if (filters?.state) {
+      whereConditions.push(`pr.state = $${params.length + 1}`);
+      params.push(filters.state);
+    }
+    if (filters?.startDate) {
+      whereConditions.push(`pr.created_at >= $${params.length + 1}`);
+      params.push(filters.startDate);
+    }
+    if (filters?.endDate) {
+      whereConditions.push(`pr.created_at <= $${params.length + 1}`);
+      params.push(filters.endDate);
+    }
+
+    const orderBy = 
+      sortBy === 'generated_at' ? 'pr_reports.generated_at DESC' :
+      sortBy === 'created_at' ? 'pr.created_at DESC' :
+      'pr.author ASC';
+
+    const whereClause = whereConditions.join(' AND ');
+    const queryString = `
       SELECT DISTINCT 
         pr.*,
         pr_reports.generated_at
       FROM pull_requests pr
       LEFT JOIN pr_reports ON pr.id = pr_reports.pr_id
-      WHERE 1=1
-    `;
-
-    // Search query (matches PR number, title, author)
-    if (searchQuery) {
-      query = sql`${query}
-        AND (
-          pr.pr_number::text LIKE ${`%${searchQuery}%`}
-          OR pr.title ILIKE ${`%${searchQuery}%`}
-          OR pr.author ILIKE ${`%${searchQuery}%`}
-        )
-      `;
-    }
-
-    // Filters
-    if (filters?.repo) {
-      query = sql`${query} AND pr.repo ILIKE ${`%${filters.repo}%`}`;
-    }
-    if (filters?.author) {
-      query = sql`${query} AND pr.author ILIKE ${`%${filters.author}%`}`;
-    }
-    if (filters?.state) {
-      query = sql`${query} AND pr.state = ${filters.state}`;
-    }
-    if (filters?.startDate) {
-      query = sql`${query} AND pr.created_at >= ${filters.startDate}`;
-    }
-    if (filters?.endDate) {
-      query = sql`${query} AND pr.created_at <= ${filters.endDate}`;
-    }
-
-    // Sort
-    const orderBy = 
-      sortBy === 'generated_at' ? 'pr_reports.generated_at DESC' :
-      sortBy === 'created_at' ? 'pull_requests.created_at DESC' :
-      'pull_requests.author ASC';
-
-    query = sql`${query}
-      ORDER BY ${sql.unsafe(orderBy)}
+      WHERE ${whereClause}
+      ORDER BY ${orderBy}
       LIMIT ${limit}
       OFFSET ${offset}
     `;
 
-    const result = await query;
+    const result = await sql.unsafe(queryString, params);
     return result as Array<PullRequest & { generated_at?: string }>;
   }
 
@@ -242,39 +244,45 @@ export class DatabaseService {
       endDate?: string;
     }
   ): Promise<number> {
-    let query = sql`
-      SELECT COUNT(DISTINCT pr.id) as count FROM pull_requests pr
-      LEFT JOIN pr_reports ON pr.id = pr_reports.pr_id
-      WHERE 1=1
-    `;
+    let whereConditions = ['1=1'];
+    const params: any[] = [];
 
     if (searchQuery) {
-      query = sql`${query}
-        AND (
-          pr.pr_number::text LIKE ${`%${searchQuery}%`}
-          OR pr.title ILIKE ${`%${searchQuery}%`}
-          OR pr.author ILIKE ${`%${searchQuery}%`}
-        )
-      `;
+      whereConditions.push(
+        `(pr.pr_number::text LIKE $${params.length + 1} OR pr.title ILIKE $${params.length + 2} OR pr.author ILIKE $${params.length + 3})`
+      );
+      params.push(`%${searchQuery}%`, `%${searchQuery}%`, `%${searchQuery}%`);
     }
 
     if (filters?.repo) {
-      query = sql`${query} AND pr.repo ILIKE ${`%${filters.repo}%`}`;
+      whereConditions.push(`pr.repo ILIKE $${params.length + 1}`);
+      params.push(`%${filters.repo}%`);
     }
     if (filters?.author) {
-      query = sql`${query} AND pr.author ILIKE ${`%${filters.author}%`}`;
+      whereConditions.push(`pr.author ILIKE $${params.length + 1}`);
+      params.push(`%${filters.author}%`);
     }
     if (filters?.state) {
-      query = sql`${query} AND pr.state = ${filters.state}`;
+      whereConditions.push(`pr.state = $${params.length + 1}`);
+      params.push(filters.state);
     }
     if (filters?.startDate) {
-      query = sql`${query} AND pr.created_at >= ${filters.startDate}`;
+      whereConditions.push(`pr.created_at >= $${params.length + 1}`);
+      params.push(filters.startDate);
     }
     if (filters?.endDate) {
-      query = sql`${query} AND pr.created_at <= ${filters.endDate}`;
+      whereConditions.push(`pr.created_at <= $${params.length + 1}`);
+      params.push(filters.endDate);
     }
 
-    const result = await query;
+    const whereClause = whereConditions.join(' AND ');
+    const queryString = `
+      SELECT COUNT(DISTINCT pr.id) as count FROM pull_requests pr
+      LEFT JOIN pr_reports ON pr.id = pr_reports.pr_id
+      WHERE ${whereClause}
+    `;
+
+    const result = await sql.unsafe(queryString, params);
     return result[0].count as number;
   }
 }
