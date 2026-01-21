@@ -1,5 +1,5 @@
 import sql from '../db/connection';
-import type { PullRequest, PRComment, PRReview, PRReport, BatchAnalysis, BatchResult } from '../types';
+import type { PullRequest, PRComment, PRReview, PRReport, BatchAnalysis, BatchResult, SharedReport } from '../types';
 
 export class DatabaseService {
   async initializeSchema() {
@@ -284,5 +284,42 @@ export class DatabaseService {
 
     const result = await sql.unsafe(queryString, params);
     return result[0].count as number;
+  }
+
+  async createSharedReport(shared: SharedReport): Promise<string> {
+    const result = await sql`
+      INSERT INTO shared_reports (report_id, share_token, password_hash, expires_at, created_by)
+      VALUES (${shared.report_id}, ${shared.share_token}, ${shared.password_hash}, ${shared.expires_at}, ${shared.created_by})
+      RETURNING share_token
+    `;
+    return result[0].share_token;
+  }
+
+  async getSharedReport(shareToken: string): Promise<SharedReport | null> {
+    const result = await sql`
+      SELECT * FROM shared_reports WHERE share_token = ${shareToken}
+    `;
+    return result.length > 0 ? (result[0] as SharedReport) : null;
+  }
+
+  async incrementShareViewCount(shareToken: string): Promise<void> {
+    await sql`
+      UPDATE shared_reports 
+      SET view_count = view_count + 1, last_accessed_at = NOW()
+      WHERE share_token = ${shareToken}
+    `;
+  }
+
+  async deleteSharedReport(shareToken: string): Promise<void> {
+    await sql`
+      DELETE FROM shared_reports WHERE share_token = ${shareToken}
+    `;
+  }
+
+  async getSharedReportByReportId(reportId: number): Promise<SharedReport | null> {
+    const result = await sql`
+      SELECT * FROM shared_reports WHERE report_id = ${reportId}
+    `;
+    return result.length > 0 ? (result[0] as SharedReport) : null;
   }
 }

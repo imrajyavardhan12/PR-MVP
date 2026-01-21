@@ -20,7 +20,10 @@ import {
   Zap,
   AlertCircle,
   CheckCircle,
-  History
+  History,
+  Share2,
+  FileJson,
+  FileText
 } from 'lucide-react';
 import HistoryDashboard from './HistoryDashboard';
 import './App.css';
@@ -86,6 +89,15 @@ function App() {
   const [batchToken, setBatchToken] = useState<string | null>(null);
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
+  
+  // Export state
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+  const [shareExpiresIn, setShareExpiresIn] = useState<'1d' | '7d' | '30d' | 'never'>('7d');
+  const [sharePassword, setSharePassword] = useState('');
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -247,6 +259,72 @@ function App() {
         clearInterval(interval);
       }
     }, 2000); // Poll every 2 seconds
+  };
+
+  const handleExport = async (format: 'markdown' | 'json' | 'html') => {
+    if (!result) return;
+    try {
+      const response = await fetch(
+        `${API_URL}/api/pr/export/${result.pr.org}/${result.pr.repo}/${result.pr.pr_number}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ format }),
+        }
+      );
+
+      if (!response.ok) throw new Error('Export failed');
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      
+      const ext = format === 'markdown' ? 'md' : format;
+      a.download = `pr-${result.pr.org}-${result.pr.repo}-${result.pr.pr_number}-analysis.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setShowExportMenu(false);
+    } catch (err) {
+      console.error('Export error:', err);
+    }
+  };
+
+  const handleCreateShare = async () => {
+    if (!result) return;
+    setShareLoading(true);
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/pr/share/${result.pr.org}/${result.pr.repo}/${result.pr.pr_number}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            expiresIn: shareExpiresIn,
+            password: sharePassword || null,
+          }),
+        }
+      );
+
+      if (!response.ok) throw new Error('Failed to create share');
+
+      const data = await response.json();
+      setShareUrl(data.share_url);
+      setSharePassword('');
+    } catch (err) {
+      console.error('Share error:', err);
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const handleCopyShare = async () => {
+    await navigator.clipboard.writeText(shareUrl);
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
   };
 
   return (
@@ -470,45 +548,84 @@ function App() {
             </div>
 
             {/* Analysis Report */}
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-              <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-800">
-                    AI Analysis Report
-                  </h2>
-                  <span className="text-xs text-gray-500 flex items-center gap-1 mt-1">
-                    <Clock className="w-3 h-3" />
-                    Generated {formatDate(result.report.generated_at)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleCopy}
-                    className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
-                    title="Copy to clipboard"
-                  >
-                    {copied ? (
-                      <>
-                        <CheckCircle2 className="w-4 h-4 text-green-600" />
-                        <span className="text-green-600">Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-4 h-4" />
-                        Copy
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={handleDownload}
-                    className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-                    title="Download as Markdown"
-                  >
-                    <Download className="w-4 h-4" />
-                    Download
-                  </button>
-                </div>
-              </div>
+             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+               <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+                 <div>
+                   <h2 className="text-lg font-semibold text-gray-800">
+                     AI Analysis Report
+                   </h2>
+                   <span className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                     <Clock className="w-3 h-3" />
+                     Generated {formatDate(result.report.generated_at)}
+                   </span>
+                 </div>
+                 <div className="flex items-center gap-2">
+                   <button
+                     onClick={handleCopy}
+                     className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+                     title="Copy to clipboard"
+                   >
+                     {copied ? (
+                       <>
+                         <CheckCircle2 className="w-4 h-4 text-green-600" />
+                         <span className="text-green-600">Copied!</span>
+                       </>
+                     ) : (
+                       <>
+                         <Copy className="w-4 h-4" />
+                         Copy
+                       </>
+                     )}
+                   </button>
+                   
+                   {/* Export Menu */}
+                   <div className="relative">
+                     <button
+                       onClick={() => setShowExportMenu(!showExportMenu)}
+                       className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+                       title="Export report"
+                     >
+                       <Download className="w-4 h-4" />
+                       Export
+                     </button>
+                     {showExportMenu && (
+                       <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+                         <button
+                           onClick={() => handleExport('markdown')}
+                           className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 border-b border-gray-100"
+                         >
+                           <FileText className="w-4 h-4" />
+                           Markdown (.md)
+                         </button>
+                         <button
+                           onClick={() => handleExport('json')}
+                           className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 border-b border-gray-100"
+                         >
+                           <FileJson className="w-4 h-4" />
+                           JSON (.json)
+                         </button>
+                         <button
+                           onClick={() => handleExport('html')}
+                           className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                         >
+                           <FileText className="w-4 h-4" />
+                           HTML (.html)
+                         </button>
+                       </div>
+                     )}
+                   </div>
+
+                   {/* Share Button */}
+                   <button
+                     onClick={() => setShowShareModal(!showShareModal)}
+                     className="flex items-center gap-2 px-3 py-2 text-sm bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                     title="Create shareable link"
+                   >
+                     <Share2 className="w-4 h-4" />
+                     Share
+                   </button>
+                 </div>
+               </div>
               <div className="px-8 py-6">
                 <div className="prose prose-slate max-w-none
                   prose-headings:text-slate-800 prose-headings:font-semibold
@@ -753,6 +870,98 @@ function App() {
            </div>
          )}
          </>
+        )}
+
+        {/* Share Modal */}
+        {showShareModal && result && (
+         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+           <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-xl">
+             <div className="flex items-center justify-between mb-6">
+               <h3 className="text-lg font-semibold text-gray-800">Create Shareable Link</h3>
+               <button
+                 onClick={() => {
+                   setShowShareModal(false);
+                   setShareUrl('');
+                 }}
+                 className="text-gray-400 hover:text-gray-600"
+               >
+                 <X className="w-5 h-5" />
+               </button>
+             </div>
+
+             {shareUrl ? (
+               <div className="space-y-4">
+                 <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-2">Shareable Link</label>
+                   <div className="flex gap-2">
+                     <input
+                       type="text"
+                       value={shareUrl}
+                       readOnly
+                       className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700"
+                     />
+                     <button
+                       onClick={handleCopyShare}
+                       className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                     >
+                       {shareCopied ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                     </button>
+                   </div>
+                 </div>
+                 <button
+                   onClick={() => {
+                     setShowShareModal(false);
+                     setShareUrl('');
+                   }}
+                   className="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+                 >
+                   Done
+                 </button>
+               </div>
+             ) : (
+               <div className="space-y-4">
+                 <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-2">Expires In</label>
+                   <select
+                     value={shareExpiresIn}
+                     onChange={(e) => setShareExpiresIn(e.target.value as any)}
+                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                   >
+                     <option value="1d">1 Day</option>
+                     <option value="7d">7 Days</option>
+                     <option value="30d">30 Days</option>
+                     <option value="never">Never</option>
+                   </select>
+                 </div>
+                 <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-2">Password (Optional)</label>
+                   <input
+                     type="password"
+                     value={sharePassword}
+                     onChange={(e) => setSharePassword(e.target.value)}
+                     placeholder="Leave empty for no password"
+                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                   />
+                 </div>
+                 <div className="flex gap-2">
+                   <button
+                     onClick={handleCreateShare}
+                     disabled={shareLoading}
+                     className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-lg transition-colors disabled:cursor-not-allowed"
+                   >
+                     {shareLoading ? 'Creating...' : 'Create Link'}
+                   </button>
+                   <button
+                     onClick={() => setShowShareModal(false)}
+                     className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+                   >
+                     Cancel
+                   </button>
+                 </div>
+               </div>
+             )}
+           </div>
+         </div>
         )}
 
         {/* History Tab */}

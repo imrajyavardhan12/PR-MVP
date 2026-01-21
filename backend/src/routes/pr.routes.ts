@@ -3,6 +3,7 @@ import { DatabaseService } from '../services/database.service';
 import { GitHubService } from '../services/github.service';
 import { OpenAIService } from '../services/openai.service';
 import historyRoutes from './history.routes';
+import exportRoutes from './export.routes';
 
 const prRoutes = new Hono();
 
@@ -125,5 +126,8 @@ prRoutes.get('/report/:org/:repo/:pr_number', async (c) => {
 
 // History routes
 prRoutes.route('/', historyRoutes);
+
+// Export routes
+prRoutes.route('/', exportRoutes);
 
 export default prRoutes;

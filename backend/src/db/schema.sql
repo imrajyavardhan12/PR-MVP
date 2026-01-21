@@ -62,6 +62,19 @@ CREATE TABLE IF NOT EXISTS batch_analyses (
     error_message TEXT
 );
 
+-- Shared Reports table
+CREATE TABLE IF NOT EXISTS shared_reports (
+    id SERIAL PRIMARY KEY,
+    report_id INTEGER NOT NULL REFERENCES pr_reports(id) ON DELETE CASCADE,
+    share_token VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255),
+    expires_at TIMESTAMP,
+    view_count INTEGER DEFAULT 0,
+    last_accessed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by VARCHAR(255)
+);
+
 -- Indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_pr_org_repo ON pull_requests(org, repo);
 CREATE INDEX IF NOT EXISTS idx_pr_comments_pr_id ON pr_comments(pr_id);
@@ -73,3 +86,5 @@ CREATE INDEX IF NOT EXISTS idx_pr_author ON pull_requests(author);
 CREATE INDEX IF NOT EXISTS idx_pr_created_at ON pull_requests(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pr_report_generated_at ON pr_reports(generated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pr_state ON pull_requests(state);
+CREATE INDEX IF NOT EXISTS idx_shared_reports_token ON shared_reports(share_token);
+CREATE INDEX IF NOT EXISTS idx_shared_reports_expires_at ON shared_reports(expires_at);

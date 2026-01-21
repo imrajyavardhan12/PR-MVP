@@ -68,3 +68,15 @@ export interface BatchResult {
   report?: PRReport;
   error?: string;
 }
+
+export interface SharedReport {
+  id?: number;
+  report_id: number;
+  share_token: string;
+  password_hash?: string;
+  expires_at?: string;
+  view_count: number;
+  last_accessed_at?: string;
+  created_at?: string;
+  created_by?: string;
+}
