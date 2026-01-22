@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -86,7 +86,6 @@ function App() {
   const [bulkInput, setBulkInput] = useState('');
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkError, setBulkError] = useState('');
-  const [batchToken, setBatchToken] = useState<string | null>(null);
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
   
@@ -154,19 +153,6 @@ function App() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDownload = () => {
-    if (!result) return;
-    const blob = new Blob([result.report.report_content], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `pr-${result.pr.org}-${result.pr.repo}-${result.pr.pr_number}-analysis.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
   const handleExampleClick = (example: string) => {
     setPrInput(example);
   };
@@ -230,7 +216,6 @@ function App() {
       }
 
       const data = await response.json();
-      setBatchToken(data.batch_token);
       
       // Start polling for progress
       pollBatchProgress(data.batch_token);
