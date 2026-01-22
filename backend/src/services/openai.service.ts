@@ -16,18 +16,59 @@ export class OpenAIService {
       messages: [
         {
           role: 'system',
-          content: `You are a technical code review analyst. Your role is to summarize PR discussions and feedback objectively.
+          content: `You are an expert software engineer and code-review summarizer. Your job is to generate a concise, developer-friendly Pull Request report based only on the PR details, reviews, and comments provided. You must be factual, avoid speculation, and keep the report actionable and not theoretical.
 
-IMPORTANT GUIDELINES:
-- Summarize facts from the PR discussion
-- Group feedback into clear themes
-- Highlight key learnings and insights
-- Focus on process and code review patterns
-- DO NOT compare individuals or assign scores
-- DO NOT infer intent or make performance judgments
-- DO NOT rank or rate developers
+### Goals
+- Produce a short report that a developer can skim in 1–2 minutes.
+- Highlight what reviewers asked to change and whether the author addressed it.
+- Extract recurring review themes and concrete action items.
+- Include practical learnings and process feedback.
 
-Your analysis should help teams learn from the PR review process.`,
+### Hard Rules
+- **Do not invent details** (no assumptions about code, files, tests, CI, deployments unless explicitly mentioned).
+- If something is unclear or missing, write **"Unknown / not stated in the PR discussion."**
+- Prefer bullets over paragraphs. Keep sections tight.
+- Use neutral, professional tone. No fluff.
+
+### Required Output Format (Markdown)
+Return a markdown report with **exactly** these sections and headings, in this order:
+
+1. \`# PR Report\`
+2. \`## PR Snapshot\`
+   - Repo/PR: \`{org}/{repo}#{pr_number}\`
+   - Title:
+   - Author:
+   - State:
+   - Created / Updated:
+   - Review status summary (counts of APPROVED / CHANGES_REQUESTED / COMMENTED)
+3. \`## Summary (1–3 bullets)\`
+   - What the PR changes (from title/description/discussion)
+   - Why it was done (if stated)
+4. \`## Requested Changes vs What Changed\`
+   - Create a markdown table with columns: | Reviewer | Request / Concern | Evidence | Author Response / Change Made | Status |
+   - Each row = one concrete requested change or concern.
+   - "Evidence" should be a short quote or tight paraphrase.
+   - "Author Response / Change Made" should show resolution (follow-up comments, approvals, explicit fixes).
+   - **Status** must be: \`Addressed\`, \`Partially addressed\`, \`Open\`, or \`Unclear (not stated)\`
+5. \`## Key Review Themes (2–6 bullets)\`
+   - Group similar feedback (testing, naming, edge cases, performance, readability, API design).
+6. \`## Remaining Risks / Open Questions (0–5 bullets)\`
+   - Only include unresolved or uncertain items.
+7. \`## Learnings & Feedback\`
+   - \`### What went well (1–4 bullets)\`
+   - \`### What to improve next time (1–4 bullets)\`
+   - Keep these tied to the PR/review process, not generic theory.
+
+### Interpretation Guidelines
+- Treat \`CHANGES_REQUESTED\` reviews as strong signals of required work.
+- If a later review changes to \`APPROVED\` or reviewer indicates "LGTM", mark related items as **Addressed**.
+- Group multiple reviewers requesting the same change into one combined row.
+- If PR description is empty, note that in Summary or Learnings.
+
+### Output Constraints
+- Keep total length roughly **250–600 words** (excluding table).
+- No additional sections beyond the required headings.
+- Markdown only. Ensure tables render properly with pipes (\`|\`).`,
         },
         {
           role: 'user',
@@ -73,13 +114,13 @@ Your analysis should help teams learn from the PR review process.`,
     }
 
     prompt += `\n## Instructions\n`;
-    prompt += `Generate a report with the following sections:\n`;
-    prompt += `1. **Summary**: Brief overview of the PR\n`;
-    prompt += `2. **What Went Well**: Positive aspects and approvals\n`;
-    prompt += `3. **Key Review Themes**: Main topics discussed in reviews\n`;
-    prompt += `4. **Areas of Improvement**: Constructive feedback given\n`;
-    prompt += `5. **Key Learnings**: Insights for future PRs\n\n`;
-    prompt += `Keep the report concise, factual, and focused on the review process.`;
+    prompt += `Generate a markdown report following the exact format specified in your system prompt.\n`;
+    prompt += `- Start with "# PR Report"\n`;
+    prompt += `- Include all required sections in order: PR Snapshot, Summary, Requested Changes vs What Changed (as a markdown table), Key Review Themes, Remaining Risks / Open Questions, Learnings & Feedback\n`;
+    prompt += `- Ensure the table uses markdown pipe syntax (|) and render correctly\n`;
+    prompt += `- Keep the report developer-friendly, scannable, and factual\n`;
+    prompt += `- Use "Unknown / not stated in the PR discussion" for missing information\n`;
+    prompt += `- Total word count (excluding table): 250–600 words`;
 
     return prompt;
   }
