@@ -611,27 +611,70 @@ function App() {
                    </button>
                  </div>
                </div>
-              <div className="px-8 py-6">
-                <div className="prose prose-slate max-w-none
-                  prose-headings:text-slate-800 prose-headings:font-semibold
-                  prose-h1:text-xl prose-h1:border-b prose-h1:border-slate-200 prose-h1:pb-2 prose-h1:mb-4
-                  prose-h2:text-lg prose-h2:mt-6 prose-h2:mb-3
-                  prose-h3:text-base prose-h3:mt-4 prose-h3:mb-2
-                  prose-p:text-slate-600 prose-p:leading-relaxed
-                  prose-strong:text-slate-800
-                  prose-ul:text-slate-600 prose-ol:text-slate-600
-                  prose-li:my-1
-                  prose-a:text-slate-700 prose-a:underline prose-a:underline-offset-2
-                  prose-code:text-slate-700 prose-code:bg-slate-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:font-normal prose-code:before:content-none prose-code:after:content-none
-                  prose-pre:bg-slate-50 prose-pre:border prose-pre:border-slate-200 prose-pre:rounded-lg prose-pre:overflow-x-auto
-                  prose-blockquote:border-l-slate-300 prose-blockquote:text-slate-600 prose-blockquote:not-italic
-                  prose-table:border prose-table:border-slate-200 prose-table:w-full
-                  prose-th:bg-slate-50 prose-th:px-4 prose-th:py-2 prose-th:text-left prose-th:text-slate-700 prose-th:font-medium prose-th:border prose-th:border-slate-200
-                  prose-td:px-4 prose-td:py-2 prose-td:border prose-td:border-slate-200 prose-td:text-slate-600
-                ">
+              <div className="px-8 py-6 bg-white">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
+                      h1({ children }) {
+                        return <h1 className="text-2xl font-bold border-b border-slate-200 pb-3 mb-4 text-slate-800">{children}</h1>;
+                      },
+                      h2({ children }) {
+                        return <h2 className="text-xl font-bold mt-6 mb-3 text-slate-800">{children}</h2>;
+                      },
+                      h3({ children }) {
+                        return <h3 className="text-lg font-semibold mt-4 mb-2 text-slate-800">{children}</h3>;
+                      },
+                      h4({ children }) {
+                        return <h4 className="text-base font-semibold mt-3 mb-2 text-slate-800">{children}</h4>;
+                      },
+                      p({ children }) {
+                        return <p className="text-slate-700 leading-relaxed mb-3">{children}</p>;
+                      },
+                      ul({ children }) {
+                        return <ul className="list-disc list-inside text-slate-700 space-y-1 mb-3">{children}</ul>;
+                      },
+                      ol({ children }) {
+                        return <ol className="list-decimal list-inside text-slate-700 space-y-1 mb-3">{children}</ol>;
+                      },
+                      li({ children }) {
+                        return <li className="text-slate-700">{children}</li>;
+                      },
+                      strong({ children }) {
+                        return <strong className="font-bold text-slate-800">{children}</strong>;
+                      },
+                      em({ children }) {
+                        return <em className="italic text-slate-700">{children}</em>;
+                      },
+                      table({ children }) {
+                        return (
+                          <div className="overflow-x-auto mb-4 border border-slate-200 rounded-lg">
+                            <table className="w-full border-collapse">{children}</table>
+                          </div>
+                        );
+                      },
+                      thead({ children }) {
+                        return <thead className="bg-slate-100 border-b border-slate-200">{children}</thead>;
+                      },
+                      tbody({ children }) {
+                        return <tbody>{children}</tbody>;
+                      },
+                      tr({ children }) {
+                        return <tr className="border-b border-slate-200">{children}</tr>;
+                      },
+                      th({ children }) {
+                        return (
+                          <th className="px-4 py-3 text-left font-semibold text-slate-800 border-r border-slate-200 last:border-r-0">
+                            {children}
+                          </th>
+                        );
+                      },
+                      td({ children }) {
+                        return (
+                          <td className="px-4 py-3 text-slate-700 border-r border-slate-200 last:border-r-0">
+                            {children}
+                          </td>
+                        );
+                      },
                       code({ node, className, children, ...props }) {
                         const match = /language-(\w+)/.exec(className || '');
                         const isInline = !match && !className;
@@ -650,16 +693,32 @@ function App() {
                             {String(children).replace(/\n$/, '')}
                           </SyntaxHighlighter>
                         ) : (
-                          <code className={className} {...props}>
+                          <code className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
                             {children}
                           </code>
+                        );
+                      },
+                      pre({ children }) {
+                        return <pre className="bg-slate-50 border border-slate-200 rounded-lg overflow-x-auto p-4 mb-3">{children}</pre>;
+                      },
+                      blockquote({ children }) {
+                        return (
+                          <blockquote className="border-l-4 border-slate-300 pl-4 italic text-slate-600 my-3">
+                            {children}
+                          </blockquote>
+                        );
+                      },
+                      a({ href, children }) {
+                        return (
+                          <a href={href} className="text-blue-600 underline hover:text-blue-800">
+                            {children}
+                          </a>
                         );
                       },
                     }}
                   >
                     {result.report.report_content}
                   </ReactMarkdown>
-                </div>
               </div>
             </div>
           </div>
