@@ -142,7 +142,7 @@ export class GitHubService {
   }
 
   // Fallback: Build diff summary from commit metadata (when API comparison fails)
-  buildCommitDiffFromMetadata(commits: any[]) {
+  buildCommitDiffFromMetadata(commits: any[], rawGithubCommits?: any[]) {
     if (commits.length === 0) {
       return {
         first_commit_sha: null,
@@ -162,14 +162,59 @@ export class GitHubService {
     const totalDeletions = commits.reduce((sum, c) => sum + (c.deletions || 0), 0);
     const totalChangedFiles = commits.reduce((sum, c) => sum + (c.changed_files || 0), 0);
 
+    // Extract file changes from raw GitHub commits if available
+    const filesChanged: any = {};
+    if (rawGithubCommits) {
+      rawGithubCommits.forEach((commit: any) => {
+        if (commit.files) {
+          commit.files.forEach((file: any) => {
+            if (!filesChanged[file.filename]) {
+              filesChanged[file.filename] = {
+                filename: file.filename,
+                status: file.status,
+                additions: 0,
+                deletions: 0,
+                changes: 0,
+                patch: '',
+              };
+            }
+            filesChanged[file.filename].additions += file.additions || 0;
+            filesChanged[file.filename].deletions += file.deletions || 0;
+            filesChanged[file.filename].changes += file.changes || 0;
+            if (file.patch) {
+              filesChanged[file.filename].patch = file.patch.slice(0, 1000);
+            }
+          });
+        }
+      });
+    }
+
     return {
       first_commit_sha: firstCommit.commit_sha,
       last_commit_sha: lastCommit.commit_sha,
       total_additions: totalAdditions,
       total_deletions: totalDeletions,
       total_changed_files: totalChangedFiles,
-      files_changed: [], // Can't get individual file list without API comparison
-      summary: `Comparison of ${commits.length} commits from ${firstCommit.commit_sha.slice(0, 7)} to ${lastCommit.commit_sha.slice(0, 7)}. Total changes: +${totalAdditions}/-${totalDeletions} across ~${totalChangedFiles} files.`,
+      files_changed: Object.values(filesChanged),
+      summary: `Comparison of ${commits.length} commits from ${firstCommit.commit_sha.slice(0, 7)} to ${lastCommit.commit_sha.slice(0, 7)}. Total changes: +${totalAdditions}/-${totalDeletions} across ${totalChangedFiles} files.`,
     };
+  }
+
+  // Extract key modification summary from a patch
+  extractModificationSummary(patch: string): string {
+    if (!patch) return 'No changes';
+    
+    const lines = patch.split('\n');
+    const changes: string[] = [];
+    
+    for (const line of lines) {
+      if (line.startsWith('+++') || line.startsWith('---')) continue;
+      if (line.startsWith('+') && !line.startsWith('+++')) {
+        changes.push(line.slice(1, 60).trim());
+      }
+      if (changes.length >= 2) break;
+    }
+    
+    return changes.length > 0 ? changes.join(' | ') : 'Modified';
   }
 }

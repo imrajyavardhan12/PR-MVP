@@ -71,8 +71,8 @@ prRoutes.post('/report', async (c) => {
         const diffSummary = githubService.buildCommitDiffSummary(comparison);
         await dbService.saveCommitDiff(prId, diffSummary);
       } else {
-        // Fallback: Create basic diff from commits metadata
-        const fallbackDiff = githubService.buildCommitDiffFromMetadata(commits);
+        // Fallback: Create diff from commits metadata and raw GitHub commit data
+        const fallbackDiff = githubService.buildCommitDiffFromMetadata(commits, githubData.commits);
         await dbService.saveCommitDiff(prId, fallbackDiff);
       }
     }

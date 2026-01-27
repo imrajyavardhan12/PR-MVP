@@ -97,6 +97,24 @@ export default function CommitComparison({ org, repo, prNumber }: CommitComparis
     }
   };
 
+  const extractModificationSummary = (patch: string | undefined): string => {
+    if (!patch) return 'No changes';
+    
+    const lines = patch.split('\n');
+    const changes: string[] = [];
+    
+    for (const line of lines) {
+      if (line.startsWith('+++') || line.startsWith('---')) continue;
+      if (line.startsWith('+') && !line.startsWith('+++')) {
+        const text = line.slice(1, 70).trim();
+        if (text.length > 0) changes.push(text);
+      }
+      if (changes.length >= 2) break;
+    }
+    
+    return changes.length > 0 ? changes.join(' ... ') : 'Modified';
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -233,71 +251,64 @@ export default function CommitComparison({ org, repo, prNumber }: CommitComparis
           Files Changed ({commitDiff.files_changed.length})
         </h3>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200">
-                <th className="text-left py-3 px-4 font-semibold text-slate-900">
-                  File
-                </th>
-                <th className="text-right py-3 px-4 font-semibold text-emerald-700">
-                  +
-                </th>
-                <th className="text-right py-3 px-4 font-semibold text-red-700">
-                  -
-                </th>
-                <th className="text-center py-3 px-4 font-semibold text-slate-900">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {commitDiff.files_changed.map((file, idx) => (
-                <tr
-                  key={idx}
-                  className="border-b border-slate-100 hover:bg-slate-50 transition-colors"
-                >
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-slate-400" />
-                      <div
-                        className="cursor-pointer flex-1"
-                        onClick={() => toggleFileExpand(file.filename)}
-                      >
-                        <p className="text-slate-900 font-medium truncate">
-                          {file.filename}
-                        </p>
-                        {expandedFiles.has(file.filename) && file.patch && (
-                          <pre className="text-xs mt-2 bg-slate-100 p-2 rounded overflow-auto max-h-40">
-                            {file.patch}
-                          </pre>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-3 px-4 text-right">
-                    <span className="text-emerald-700 font-semibold">
+        <div className="space-y-3">
+          {commitDiff.files_changed.map((file, idx) => (
+            <div
+              key={idx}
+              className="border border-slate-200 rounded-lg p-4 hover:bg-slate-50 transition-colors"
+            >
+              {/* File Header */}
+              <div
+                className="cursor-pointer flex items-center justify-between"
+                onClick={() => toggleFileExpand(file.filename)}
+              >
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <FileText className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-900 truncate">
+                      {file.filename}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                      {extractModificationSummary(file.patch)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 ml-4 flex-shrink-0">
+                  <div className="text-right">
+                    <span className="text-emerald-700 font-semibold text-sm">
                       +{file.additions}
                     </span>
-                  </td>
-                  <td className="py-3 px-4 text-right">
-                    <span className="text-red-700 font-semibold">
+                    <span className="mx-2 text-slate-400">/</span>
+                    <span className="text-red-700 font-semibold text-sm">
                       -{file.deletions}
                     </span>
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    <span
-                      className={`inline-block px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                        file.status
-                      )}`}
-                    >
-                      {file.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                  <span
+                    className={`inline-block px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                      file.status
+                    )}`}
+                  >
+                    {file.status}
+                  </span>
+                  <ChevronDown
+                    className={`w-4 h-4 text-slate-400 transition-transform flex-shrink-0 ${
+                      expandedFiles.has(file.filename) ? 'rotate-180' : ''
+                    }`}
+                  />
+                </div>
+              </div>
+
+              {/* Expanded Patch View */}
+              {expandedFiles.has(file.filename) && file.patch && (
+                <div className="mt-4 pt-4 border-t border-slate-200">
+                  <p className="text-xs font-semibold text-slate-600 mb-2">Code Changes:</p>
+                  <pre className="text-xs bg-slate-900 text-slate-100 p-3 rounded overflow-auto max-h-80 font-mono">
+                    {file.patch}
+                  </pre>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
 
