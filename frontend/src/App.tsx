@@ -26,6 +26,7 @@ import {
   FileText
 } from 'lucide-react';
 import HistoryDashboard from './HistoryDashboard';
+import CommitComparison from './CommitComparison';
 import './App.css';
 
 interface PRReport {
@@ -530,6 +531,18 @@ function App() {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* Commit Comparison */}
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm p-6">
+              <h2 className="text-lg font-semibold text-gray-800 mb-4">
+                Commit Comparison (First vs Last)
+              </h2>
+              <CommitComparison 
+                org={result.pr.org} 
+                repo={result.pr.repo} 
+                prNumber={result.pr.pr_number} 
+              />
             </div>
 
             {/* Analysis Report */}

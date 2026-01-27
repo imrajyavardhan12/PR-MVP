@@ -322,4 +322,51 @@ export class DatabaseService {
     `;
     return result.length > 0 ? (result[0] as SharedReport) : null;
   }
+
+  // Commit-related methods
+  async saveCommits(commits: any[]): Promise<void> {
+    for (const commit of commits) {
+      await sql`
+        INSERT INTO pr_commits (pr_id, commit_sha, commit_message, author_name, author_email, committed_at, additions, deletions, changed_files, raw_data)
+        VALUES (${commit.pr_id}, ${commit.commit_sha}, ${commit.commit_message}, ${commit.author_name}, ${commit.author_email}, ${commit.committed_at}, ${commit.additions}, ${commit.deletions}, ${commit.changed_files}, ${commit.raw_data})
+        ON CONFLICT (pr_id, commit_sha) DO NOTHING
+      `;
+    }
+  }
+
+  async getCommits(prId: number): Promise<any[]> {
+    const result = await sql`
+      SELECT * FROM pr_commits WHERE pr_id = ${prId} ORDER BY committed_at ASC
+    `;
+    return result;
+  }
+
+  async saveCommitDiff(prId: number, diffData: any): Promise<void> {
+    await sql`
+      INSERT INTO commit_diffs (pr_id, first_commit_sha, last_commit_sha, total_additions, total_deletions, total_changed_files, files_changed, analyzed_at)
+      VALUES (${prId}, ${diffData.first_commit_sha}, ${diffData.last_commit_sha}, ${diffData.total_additions}, ${diffData.total_deletions}, ${diffData.total_changed_files}, ${JSON.stringify(diffData.files_changed)}, NOW())
+      ON CONFLICT (pr_id) 
+      DO UPDATE SET 
+        first_commit_sha = EXCLUDED.first_commit_sha,
+        last_commit_sha = EXCLUDED.last_commit_sha,
+        total_additions = EXCLUDED.total_additions,
+        total_deletions = EXCLUDED.total_deletions,
+        total_changed_files = EXCLUDED.total_changed_files,
+        files_changed = EXCLUDED.files_changed,
+        analyzed_at = NOW()
+    `;
+  }
+
+  async getCommitDiff(prId: number): Promise<any | null> {
+    const result = await sql`
+      SELECT * FROM commit_diffs WHERE pr_id = ${prId}
+    `;
+    return result.length > 0 ? result[0] : null;
+  }
+
+  async updateCommitDiffSummary(prId: number, summary: string): Promise<void> {
+    await sql`
+      UPDATE commit_diffs SET summary = ${summary} WHERE pr_id = ${prId}
+    `;
+  }
 }

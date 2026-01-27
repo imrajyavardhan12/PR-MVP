@@ -75,6 +75,37 @@ CREATE TABLE IF NOT EXISTS shared_reports (
     created_by VARCHAR(255)
 );
 
+-- PR Commits table (new)
+CREATE TABLE IF NOT EXISTS pr_commits (
+    id SERIAL PRIMARY KEY,
+    pr_id INTEGER NOT NULL REFERENCES pull_requests(id) ON DELETE CASCADE,
+    commit_sha VARCHAR(40) NOT NULL,
+    commit_message TEXT NOT NULL,
+    author_name VARCHAR(255),
+    author_email VARCHAR(255),
+    committed_at TIMESTAMP NOT NULL,
+    additions INTEGER DEFAULT 0,
+    deletions INTEGER DEFAULT 0,
+    changed_files INTEGER DEFAULT 0,
+    raw_data JSONB NOT NULL,
+    UNIQUE(pr_id, commit_sha)
+);
+
+-- Commit Diff Summary table (new)
+CREATE TABLE IF NOT EXISTS commit_diffs (
+    id SERIAL PRIMARY KEY,
+    pr_id INTEGER NOT NULL REFERENCES pull_requests(id) ON DELETE CASCADE,
+    first_commit_sha VARCHAR(40),
+    last_commit_sha VARCHAR(40),
+    total_additions INTEGER DEFAULT 0,
+    total_deletions INTEGER DEFAULT 0,
+    total_changed_files INTEGER DEFAULT 0,
+    files_changed JSONB, -- Array of {filename, additions, deletions, status}
+    summary TEXT, -- AI-generated summary
+    analyzed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(pr_id)
+);
+
 -- Indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_pr_org_repo ON pull_requests(org, repo);
 CREATE INDEX IF NOT EXISTS idx_pr_comments_pr_id ON pr_comments(pr_id);
@@ -88,3 +119,5 @@ CREATE INDEX IF NOT EXISTS idx_pr_report_generated_at ON pr_reports(generated_at
 CREATE INDEX IF NOT EXISTS idx_pr_state ON pull_requests(state);
 CREATE INDEX IF NOT EXISTS idx_shared_reports_token ON shared_reports(share_token);
 CREATE INDEX IF NOT EXISTS idx_shared_reports_expires_at ON shared_reports(expires_at);
+CREATE INDEX IF NOT EXISTS idx_pr_commits_pr_id ON pr_commits(pr_id);
+CREATE INDEX IF NOT EXISTS idx_commit_diffs_pr_id ON commit_diffs(pr_id);

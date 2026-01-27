@@ -54,6 +54,21 @@ prRoutes.post('/report', async (c) => {
       await dbService.saveReview(review);
     }
 
+    // Save commits
+    if (githubData.commits && githubData.commits.length > 0) {
+      const commits = githubService.transformCommits(prId, githubData.commits);
+      await dbService.saveCommits(commits);
+
+      // Fetch commit comparison (first vs last commit)
+      console.log('Fetching commit comparison...');
+      const baseRef = githubData.pr.base.ref;
+      const headRef = githubData.pr.head.ref;
+      const comparison = await githubService.fetchCommitComparison(org, repo, baseRef, headRef);
+      
+      const diffSummary = githubService.buildCommitDiffSummary(comparison);
+      await dbService.saveCommitDiff(prId, diffSummary);
+    }
+
     // Generate LLM report
     console.log('Generating LLM report...');
     const reportContent = await openaiService.generatePRReport({
@@ -108,17 +123,60 @@ prRoutes.get('/report/:org/:repo/:pr_number', async (c) => {
 
     const comments = await dbService.getComments(pr.id!);
     const reviews = await dbService.getReviews(pr.id!);
+    const commits = await dbService.getCommits(pr.id!);
+    const commitDiff = await dbService.getCommitDiff(pr.id!);
 
     return c.json({
       pr,
       report,
       comments,
       reviews,
+      commits,
+      commitDiff,
     });
   } catch (error: any) {
     console.error('Error fetching report:', error);
     return c.json({ 
       error: 'Failed to fetch report', 
+      details: error.message 
+    }, 500);
+  }
+});
+
+// GET /api/pr/commits/:org/:repo/:pr_number
+// Get commit comparison data
+prRoutes.get('/commits/:org/:repo/:pr_number', async (c) => {
+  try {
+    const org = c.req.param('org');
+    const repo = c.req.param('repo');
+    const pr_number = parseInt(c.req.param('pr_number'));
+
+    const pr = await dbService.getPullRequest(org, repo, pr_number);
+    
+    if (!pr) {
+      return c.json({ error: 'PR not found' }, 404);
+    }
+
+    const commits = await dbService.getCommits(pr.id!);
+    const commitDiff = await dbService.getCommitDiff(pr.id!);
+
+    return c.json({
+      pr_number,
+      org,
+      repo,
+      total_commits: commits.length,
+      commits,
+      commitDiff: commitDiff || {
+        total_additions: 0,
+        total_deletions: 0,
+        total_changed_files: 0,
+        files_changed: [],
+      },
+    });
+  } catch (error: any) {
+    console.error('Error fetching commits:', error);
+    return c.json({ 
+      error: 'Failed to fetch commits', 
       details: error.message 
     }, 500);
   }
