@@ -55,8 +55,9 @@ prRoutes.post('/report', async (c) => {
     }
 
     // Save commits
+    let commits: any[] = [];
     if (githubData.commits && githubData.commits.length > 0) {
-      const commits = githubService.transformCommits(prId, githubData.commits);
+      commits = githubService.transformCommits(prId, githubData.commits);
       await dbService.saveCommits(commits);
 
       // Fetch commit comparison (first vs last commit)
