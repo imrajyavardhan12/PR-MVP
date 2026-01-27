@@ -141,7 +141,8 @@ export class GitHubService {
     };
   }
 
-  // Fallback: Build diff summary from commit metadata (when API comparison fails)
+  // Fallback: Build diff summary from raw GitHub commits (when API comparison fails)
+  // Note: pulls.listCommits() already includes files array with patches!
   buildCommitDiffFromMetadata(commits: any[], rawGithubCommits?: any[]) {
     if (commits.length === 0) {
       return {
@@ -162,12 +163,14 @@ export class GitHubService {
     const totalDeletions = commits.reduce((sum, c) => sum + (c.deletions || 0), 0);
     const totalChangedFiles = commits.reduce((sum, c) => sum + (c.changed_files || 0), 0);
 
-    // Extract file changes from raw GitHub commits if available
+    // Extract file changes from raw GitHub commits
+    // pulls.listCommits() returns: [{sha, commit, files: [{filename, additions, deletions, patch, status}, ...], ...}, ...]
     const filesChanged: any = {};
-    if (rawGithubCommits) {
-      rawGithubCommits.forEach((commit: any) => {
-        if (commit.files) {
-          commit.files.forEach((file: any) => {
+    
+    if (rawGithubCommits && rawGithubCommits.length > 0) {
+      rawGithubCommits.forEach((commitData: any) => {
+        if (commitData.files && Array.isArray(commitData.files)) {
+          commitData.files.forEach((file: any) => {
             if (!filesChanged[file.filename]) {
               filesChanged[file.filename] = {
                 filename: file.filename,
@@ -181,8 +184,9 @@ export class GitHubService {
             filesChanged[file.filename].additions += file.additions || 0;
             filesChanged[file.filename].deletions += file.deletions || 0;
             filesChanged[file.filename].changes += file.changes || 0;
-            if (file.patch) {
-              filesChanged[file.filename].patch = file.patch.slice(0, 1000);
+            // Keep the most detailed patch
+            if (file.patch && file.patch.length > filesChanged[file.filename].patch.length) {
+              filesChanged[file.filename].patch = file.patch.slice(0, 2000);
             }
           });
         }
