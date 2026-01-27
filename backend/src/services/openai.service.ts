@@ -179,13 +179,19 @@ Generate EXACTLY these markdown sections in this order (use proper markdown synt
         prompt += `Changes: +${lastCommit.additions}/-${lastCommit.deletions} across ${lastCommit.changed_files} files\n`;
       }
 
-      if (commitDiff.files_changed && commitDiff.files_changed.length > 0) {
+      // Ensure files_changed is an array
+      let filesChanged = commitDiff.files_changed;
+      if (typeof filesChanged === 'string') {
+        filesChanged = JSON.parse(filesChanged);
+      }
+      
+      if (filesChanged && Array.isArray(filesChanged) && filesChanged.length > 0) {
         prompt += `\n### Files Changed\n`;
-        commitDiff.files_changed.slice(0, 15).forEach((file: any) => {
+        filesChanged.slice(0, 15).forEach((file: any) => {
           prompt += `- ${file.filename} (${file.status}): +${file.additions}/-${file.deletions}\n`;
         });
-        if (commitDiff.files_changed.length > 15) {
-          prompt += `- ... and ${commitDiff.files_changed.length - 15} more files\n`;
+        if (filesChanged.length > 15) {
+          prompt += `- ... and ${filesChanged.length - 15} more files\n`;
         }
       }
     }

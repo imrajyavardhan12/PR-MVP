@@ -361,7 +361,14 @@ export class DatabaseService {
     const result = await sql`
       SELECT * FROM commit_diffs WHERE pr_id = ${prId}
     `;
-    return result.length > 0 ? result[0] : null;
+    if (result.length === 0) return null;
+    
+    const diff = result[0] as any;
+    // Parse files_changed if it's a JSON string
+    if (diff.files_changed && typeof diff.files_changed === 'string') {
+      diff.files_changed = JSON.parse(diff.files_changed);
+    }
+    return diff;
   }
 
   async updateCommitDiffSummary(prId: number, summary: string): Promise<void> {
