@@ -38,11 +38,20 @@ export class GitHubService {
       per_page: 100,
     });
 
+    // Fetch all files changed in PR (includes patches)
+    const { data: filesData } = await this.octokit.pulls.listFiles({
+      owner: org,
+      repo: repo,
+      pull_number: prNumber,
+      per_page: 100,
+    });
+
     return {
       pr: prData,
       comments: commentsData,
       reviews: reviewsData,
       commits: commitsData,
+      files: filesData,
     };
   }
 
@@ -106,18 +115,30 @@ export class GitHubService {
   }
 
   transformCommits(prId: number, commitsData: any[]) {
-    return commitsData.map(commit => ({
-      pr_id: prId,
-      commit_sha: commit.sha,
-      commit_message: commit.commit.message,
-      author_name: commit.commit.author?.name || 'Unknown',
-      author_email: commit.commit.author?.email || '',
-      committed_at: commit.commit.author?.date,
-      additions: commit.stats?.additions || 0,
-      deletions: commit.stats?.deletions || 0,
-      changed_files: commit.changed_files || 0,
-      raw_data: commit,
-    }));
+    return commitsData.map(commit => {
+      // Calculate additions/deletions from files array since pulls.listCommits() doesn't include stats object
+      let additions = 0;
+      let deletions = 0;
+      if (commit.files && Array.isArray(commit.files)) {
+        commit.files.forEach((file: any) => {
+          additions += file.additions || 0;
+          deletions += file.deletions || 0;
+        });
+      }
+      
+      return {
+        pr_id: prId,
+        commit_sha: commit.sha,
+        commit_message: commit.commit.message,
+        author_name: commit.commit.author?.name || 'Unknown',
+        author_email: commit.commit.author?.email || '',
+        committed_at: commit.commit.author?.date,
+        additions,
+        deletions,
+        changed_files: commit.changed_files || 0,
+        raw_data: commit,
+      };
+    });
   }
 
   // Build summary from commit comparison
@@ -142,8 +163,8 @@ export class GitHubService {
   }
 
   // Fallback: Build diff summary from raw GitHub commits (when API comparison fails)
-  // Note: pulls.listCommits() already includes files array with patches!
-  buildCommitDiffFromMetadata(commits: any[], rawGithubCommits?: any[]) {
+  // Use prFiles from pulls.listFiles() which has complete patch data
+  buildCommitDiffFromMetadata(commits: any[], rawGithubCommits?: any[], prFiles?: any[]) {
     if (commits.length === 0) {
       return {
         first_commit_sha: null,
@@ -158,16 +179,33 @@ export class GitHubService {
     const firstCommit = commits[0];
     const lastCommit = commits[commits.length - 1];
 
-    // Sum up stats from all commits
+    // Sum up stats from all transformed commits
     const totalAdditions = commits.reduce((sum, c) => sum + (c.additions || 0), 0);
     const totalDeletions = commits.reduce((sum, c) => sum + (c.deletions || 0), 0);
     const totalChangedFiles = commits.reduce((sum, c) => sum + (c.changed_files || 0), 0);
+    
+    console.log(`Commit diff stats: +${totalAdditions}/-${totalDeletions} across ${totalChangedFiles} files`);
 
-    // Extract file changes from raw GitHub commits
-    // pulls.listCommits() returns: [{sha, commit, files: [{filename, additions, deletions, patch, status}, ...], ...}, ...]
+    // Extract file changes from PR files endpoint which includes full patch data
+    // pulls.listFiles() returns: [{filename, additions, deletions, patch, status, ...}, ...]
     const filesChanged: any = {};
     
-    if (rawGithubCommits && rawGithubCommits.length > 0) {
+    if (prFiles && prFiles.length > 0) {
+      prFiles.forEach((file: any) => {
+        filesChanged[file.filename] = {
+          filename: file.filename,
+          status: file.status,
+          additions: file.additions || 0,
+          deletions: file.deletions || 0,
+          changes: file.changes || 0,
+          patch: file.patch ? file.patch.slice(0, 2000) : '',
+        };
+      });
+      console.log(`Extracted ${Object.keys(filesChanged).length} files from PR files endpoint:`, 
+        Object.keys(filesChanged).map(f => ({ file: f, hasPatch: filesChanged[f].patch.length > 0 }))
+      );
+    } else if (rawGithubCommits && rawGithubCommits.length > 0) {
+      // Fallback to commit files if PR files not available
       rawGithubCommits.forEach((commitData: any) => {
         if (commitData.files && Array.isArray(commitData.files)) {
           commitData.files.forEach((file: any) => {
@@ -184,7 +222,6 @@ export class GitHubService {
             filesChanged[file.filename].additions += file.additions || 0;
             filesChanged[file.filename].deletions += file.deletions || 0;
             filesChanged[file.filename].changes += file.changes || 0;
-            // Keep the most detailed patch
             if (file.patch && file.patch.length > filesChanged[file.filename].patch.length) {
               filesChanged[file.filename].patch = file.patch.slice(0, 2000);
             }

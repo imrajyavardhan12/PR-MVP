@@ -71,11 +71,11 @@ prRoutes.post('/report', async (c) => {
         const diffSummary = githubService.buildCommitDiffSummary(comparison);
         await dbService.saveCommitDiff(prId, diffSummary);
       } else {
-        // Fallback: Use the raw GitHub commits which already have files array
-        // pulls.listCommits() returns commits with files: [{filename, additions, deletions, patch, status}, ...]
+        // Fallback: Use PR files endpoint which has complete patch data
         const fallbackDiff = githubService.buildCommitDiffFromMetadata(
           commits, 
-          githubData.commits  // This already has files data!
+          githubData.commits,
+          githubData.files  // Pull files from the PR endpoint
         );
         await dbService.saveCommitDiff(prId, fallbackDiff);
       }
