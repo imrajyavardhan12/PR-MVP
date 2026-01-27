@@ -65,16 +65,26 @@ prRoutes.post('/report', async (c) => {
       const headRef = githubData.pr.head.ref;
       const comparison = await githubService.fetchCommitComparison(org, repo, baseRef, headRef);
       
-      const diffSummary = githubService.buildCommitDiffSummary(comparison);
-      await dbService.saveCommitDiff(prId, diffSummary);
+      // Only save diff if comparison was successful
+      if (comparison) {
+        const diffSummary = githubService.buildCommitDiffSummary(comparison);
+        await dbService.saveCommitDiff(prId, diffSummary);
+      } else {
+        // Fallback: Create basic diff from commits metadata
+        const fallbackDiff = githubService.buildCommitDiffFromMetadata(commits);
+        await dbService.saveCommitDiff(prId, fallbackDiff);
+      }
     }
 
-    // Generate LLM report
+    // Generate LLM report (with commit context for better analysis)
     console.log('Generating LLM report...');
+    const commitDiffData = await dbService.getCommitDiff(prId);
     const reportContent = await openaiService.generatePRReport({
       pr: prData,
       comments,
       reviews,
+      commits: commits || [],
+      commitDiff: commitDiffData,
     });
 
     // Save report

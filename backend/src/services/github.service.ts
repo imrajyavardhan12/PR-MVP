@@ -49,16 +49,21 @@ export class GitHubService {
   // Fetch commit comparison (first vs last commit)
   async fetchCommitComparison(org: string, repo: string, baseRef: string, headRef: string) {
     try {
+      // URL encode the refs to handle special characters in branch names
+      const encodedBase = encodeURIComponent(baseRef);
+      const encodedHead = encodeURIComponent(headRef);
+      
       const { data: comparisonData } = await this.octokit.repos.compareCommits({
         owner: org,
         repo: repo,
-        base: baseRef,
-        head: headRef,
+        base: encodedBase,
+        head: encodedHead,
       });
       return comparisonData;
-    } catch (error) {
-      console.error('Error fetching commit comparison:', error);
-      throw error;
+    } catch (error: any) {
+      console.warn('Warning: Could not fetch commit comparison (this is optional):', error.message);
+      // Return null instead of throwing - commit comparison is optional
+      return null;
     }
   }
 
@@ -133,6 +138,38 @@ export class GitHubService {
         status: file.status, // added, removed, modified, renamed, copied, etc.
         patch: file.patch ? file.patch.slice(0, 500) : null, // First 500 chars
       })),
+    };
+  }
+
+  // Fallback: Build diff summary from commit metadata (when API comparison fails)
+  buildCommitDiffFromMetadata(commits: any[]) {
+    if (commits.length === 0) {
+      return {
+        first_commit_sha: null,
+        last_commit_sha: null,
+        total_additions: 0,
+        total_deletions: 0,
+        total_changed_files: 0,
+        files_changed: [],
+      };
+    }
+
+    const firstCommit = commits[0];
+    const lastCommit = commits[commits.length - 1];
+
+    // Sum up stats from all commits
+    const totalAdditions = commits.reduce((sum, c) => sum + (c.additions || 0), 0);
+    const totalDeletions = commits.reduce((sum, c) => sum + (c.deletions || 0), 0);
+    const totalChangedFiles = commits.reduce((sum, c) => sum + (c.changed_files || 0), 0);
+
+    return {
+      first_commit_sha: firstCommit.commit_sha,
+      last_commit_sha: lastCommit.commit_sha,
+      total_additions: totalAdditions,
+      total_deletions: totalDeletions,
+      total_changed_files: totalChangedFiles,
+      files_changed: [], // Can't get individual file list without API comparison
+      summary: `Comparison of ${commits.length} commits from ${firstCommit.commit_sha.slice(0, 7)} to ${lastCommit.commit_sha.slice(0, 7)}. Total changes: +${totalAdditions}/-${totalDeletions} across ~${totalChangedFiles} files.`,
     };
   }
 }
