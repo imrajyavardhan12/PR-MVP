@@ -81,6 +81,12 @@ export class DatabaseService {
     return result.length > 0 ? result[0] as PRReport : null;
   }
 
+  async deleteReport(prId: number): Promise<void> {
+    await sql`
+      DELETE FROM pr_reports WHERE pr_id = ${prId}
+    `;
+  }
+
   async createBatch(batch: BatchAnalysis): Promise<string> {
     const result = await sql`
       INSERT INTO batch_analyses (batch_token, pr_list, status, total_count, completed_count)
@@ -329,7 +335,15 @@ export class DatabaseService {
       await sql`
         INSERT INTO pr_commits (pr_id, commit_sha, commit_message, author_name, author_email, committed_at, additions, deletions, changed_files, raw_data)
         VALUES (${commit.pr_id}, ${commit.commit_sha}, ${commit.commit_message}, ${commit.author_name}, ${commit.author_email}, ${commit.committed_at}, ${commit.additions}, ${commit.deletions}, ${commit.changed_files}, ${commit.raw_data})
-        ON CONFLICT (pr_id, commit_sha) DO NOTHING
+        ON CONFLICT (pr_id, commit_sha) DO UPDATE SET
+          commit_message = EXCLUDED.commit_message,
+          author_name = EXCLUDED.author_name,
+          author_email = EXCLUDED.author_email,
+          committed_at = EXCLUDED.committed_at,
+          additions = EXCLUDED.additions,
+          deletions = EXCLUDED.deletions,
+          changed_files = EXCLUDED.changed_files,
+          raw_data = EXCLUDED.raw_data
       `;
     }
   }
@@ -376,4 +390,38 @@ export class DatabaseService {
       UPDATE commit_diffs SET summary = ${summary} WHERE pr_id = ${prId}
     `;
   }
+
+  // Last Commit Files methods (Option B - dedicated table)
+  async saveLastCommitFiles(lastCommitData: any): Promise<void> {
+    await sql`
+      INSERT INTO last_commit_files (pr_id, commit_sha, commit_message, author_name, author_email, committed_at, total_additions, total_deletions, total_changed_files, files_changed)
+      VALUES (${lastCommitData.pr_id}, ${lastCommitData.commit_sha}, ${lastCommitData.commit_message}, ${lastCommitData.author_name}, ${lastCommitData.author_email}, ${lastCommitData.committed_at}, ${lastCommitData.total_additions}, ${lastCommitData.total_deletions}, ${lastCommitData.total_changed_files}, ${JSON.stringify(lastCommitData.files_changed)})
+      ON CONFLICT (pr_id) 
+      DO UPDATE SET 
+        commit_sha = EXCLUDED.commit_sha,
+        commit_message = EXCLUDED.commit_message,
+        author_name = EXCLUDED.author_name,
+        author_email = EXCLUDED.author_email,
+        committed_at = EXCLUDED.committed_at,
+        total_additions = EXCLUDED.total_additions,
+        total_deletions = EXCLUDED.total_deletions,
+        total_changed_files = EXCLUDED.total_changed_files,
+        files_changed = EXCLUDED.files_changed
+    `;
+  }
+
+  async getLastCommitFiles(prId: number): Promise<any | null> {
+    const result = await sql`
+      SELECT * FROM last_commit_files WHERE pr_id = ${prId}
+    `;
+    if (result.length === 0) return null;
+    
+    const data = result[0] as any;
+    // Parse files_changed if it's a JSON string
+    if (data.files_changed && typeof data.files_changed === 'string') {
+      data.files_changed = JSON.parse(data.files_changed);
+    }
+    return data;
+  }
 }
+

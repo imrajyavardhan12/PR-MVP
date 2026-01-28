@@ -614,14 +614,46 @@ function App() {
                    </div>
 
                    {/* Share Button */}
-                   <button
-                     onClick={() => setShowShareModal(!showShareModal)}
-                     className="flex items-center gap-2 px-3 py-2 text-sm bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
-                     title="Create shareable link"
-                   >
-                     <Share2 className="w-4 h-4" />
-                     Share
-                   </button>
+                  <button
+                    onClick={() => setShowShareModal(!showShareModal)}
+                    className="flex items-center gap-2 px-3 py-2 text-sm bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                    title="Create shareable link"
+                  >
+                    <Share2 className="w-4 h-4" />
+                    Share
+                  </button>
+
+                  <button
+                    onClick={async () => {
+                      if (!result) return;
+                      const confirmDelete = window.confirm('Delete this analysis report? This cannot be undone.');
+                      if (!confirmDelete) return;
+
+                      try {
+                        const resp = await fetch(`${API_URL}/api/pr/report/${result.pr.org}/${result.pr.repo}/${result.pr.pr_number}`, {
+                          method: 'DELETE',
+                        });
+
+                        if (!resp.ok) {
+                          const err = await resp.json();
+                          throw new Error(err.error || 'Failed to delete report');
+                        }
+
+                        // Clear UI
+                        setResult(null);
+                        setBatchResults([]);
+                        setError('Report deleted');
+                        setTimeout(() => setError(''), 2000);
+                      } catch (err: any) {
+                        setError(err.message || 'Failed to delete report');
+                      }
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                    title="Delete report"
+                  >
+                    <X className="w-4 h-4" />
+                    Delete
+                  </button>
                  </div>
                </div>
               <div className="px-8 py-6 bg-white">

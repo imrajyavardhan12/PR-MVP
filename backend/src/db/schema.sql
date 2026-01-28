@@ -106,6 +106,23 @@ CREATE TABLE IF NOT EXISTS commit_diffs (
     UNIQUE(pr_id)
 );
 
+-- Last Commit Files table (NEW - Option B)
+CREATE TABLE IF NOT EXISTS last_commit_files (
+    id SERIAL PRIMARY KEY,
+    pr_id INTEGER NOT NULL REFERENCES pull_requests(id) ON DELETE CASCADE,
+    commit_sha VARCHAR(40) NOT NULL,
+    commit_message TEXT NOT NULL,
+    author_name VARCHAR(255),
+    author_email VARCHAR(255),
+    committed_at TIMESTAMP NOT NULL,
+    total_additions INTEGER DEFAULT 0,
+    total_deletions INTEGER DEFAULT 0,
+    total_changed_files INTEGER DEFAULT 0,
+    files_changed JSONB NOT NULL, -- Array of {filename, additions, deletions, status, patch}
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(pr_id)
+);
+
 -- Indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_pr_org_repo ON pull_requests(org, repo);
 CREATE INDEX IF NOT EXISTS idx_pr_comments_pr_id ON pr_comments(pr_id);
@@ -121,3 +138,4 @@ CREATE INDEX IF NOT EXISTS idx_shared_reports_token ON shared_reports(share_toke
 CREATE INDEX IF NOT EXISTS idx_shared_reports_expires_at ON shared_reports(expires_at);
 CREATE INDEX IF NOT EXISTS idx_pr_commits_pr_id ON pr_commits(pr_id);
 CREATE INDEX IF NOT EXISTS idx_commit_diffs_pr_id ON commit_diffs(pr_id);
+CREATE INDEX IF NOT EXISTS idx_last_commit_files_pr_id ON last_commit_files(pr_id);

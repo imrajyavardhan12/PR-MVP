@@ -57,28 +57,42 @@ prRoutes.post('/report', async (c) => {
     // Save commits
     let commits: any[] = [];
     if (githubData.commits && githubData.commits.length > 0) {
-      commits = githubService.transformCommits(prId, githubData.commits);
+      commits = await githubService.transformCommits(org, repo, prId, githubData.commits);
       await dbService.saveCommits(commits);
 
-      // Fetch commit comparison (first vs last commit)
-      console.log('Fetching commit comparison...');
-      const baseRef = githubData.pr.base.ref;
-      const headRef = githubData.pr.head.ref;
-      const comparison = await githubService.fetchCommitComparison(org, repo, baseRef, headRef);
+    // NEW (Option B): Save last commit files separately
+    console.log('Saving last commit files...');
+    if (commits.length > 0) {
+      const lastCommitData = commits[commits.length - 1];
+      const lastCommitRawData = githubData.commits[githubData.commits.length - 1];
       
-      // Only save diff if comparison was successful
-      if (comparison) {
-        const diffSummary = githubService.buildCommitDiffSummary(comparison);
-        await dbService.saveCommitDiff(prId, diffSummary);
-      } else {
-        // Fallback: Use PR files endpoint which has complete patch data
-        const fallbackDiff = githubService.buildCommitDiffFromMetadata(
-          commits, 
-          githubData.commits,
-          githubData.files  // Pull files from the PR endpoint
-        );
-        await dbService.saveCommitDiff(prId, fallbackDiff);
-      }
+      const lastCommitFiles = githubService.buildLastCommitFiles(lastCommitRawData, githubData.files);
+      lastCommitFiles.pr_id = prId;
+      await dbService.saveLastCommitFiles(lastCommitFiles);
+    }
+
+    // Fetch commit comparison (first vs last commit)
+    console.log('Fetching commit comparison...');
+    const baseRef = githubData.pr.base.ref;
+    const headRef = githubData.pr.head.ref;
+    const comparison = await githubService.fetchCommitComparison(org, repo, baseRef, headRef);
+
+    // Prefer using the comparison result when it contains file changes.
+    // If comparison exists but has no files, fall back to the PR files data
+    // returned by the pulls.listFiles() endpoint (githubData.files).
+    if (comparison && Array.isArray(comparison.files) && comparison.files.length > 0) {
+      console.log('Using comparison API files for diff summary');
+      const diffSummary = githubService.buildCommitDiffSummary(comparison);
+      await dbService.saveCommitDiff(prId, diffSummary);
+    } else {
+      console.log('Comparison API missing file details; falling back to PR files metadata');
+      const fallbackDiff = githubService.buildCommitDiffFromMetadata(
+        commits,
+        githubData.commits,
+        githubData.files // Pull files from the PR endpoint
+      );
+      await dbService.saveCommitDiff(prId, fallbackDiff);
+    }
     }
 
     // Generate LLM report (with commit context for better analysis)
@@ -158,8 +172,8 @@ prRoutes.get('/report/:org/:repo/:pr_number', async (c) => {
   }
 });
 
-// GET /api/pr/commits/:org/:repo/:pr_number
-// Get commit comparison data
+// GET /api/pr/commits/:org/:repo/:pr_number (DEPRECATED - kept for compatibility)
+// Now returns aggregated commit comparison (first vs last)
 prRoutes.get('/commits/:org/:repo/:pr_number', async (c) => {
   try {
     const org = c.req.param('org');
@@ -197,10 +211,83 @@ prRoutes.get('/commits/:org/:repo/:pr_number', async (c) => {
   }
 });
 
+// GET /api/pr/last-commit/:org/:repo/:pr_number (NEW - Option B)
+// Get ONLY the last commit's file changes
+prRoutes.get('/last-commit/:org/:repo/:pr_number', async (c) => {
+  try {
+    const org = c.req.param('org');
+    const repo = c.req.param('repo');
+    const pr_number = parseInt(c.req.param('pr_number'));
+
+    const pr = await dbService.getPullRequest(org, repo, pr_number);
+    
+    if (!pr) {
+      return c.json({ error: 'PR not found' }, 404);
+    }
+
+    const lastCommitFiles = await dbService.getLastCommitFiles(pr.id!);
+
+    if (!lastCommitFiles) {
+      return c.json({ error: 'Last commit data not found' }, 404);
+    }
+
+    return c.json({
+      org,
+      repo,
+      pr_number,
+      lastCommit: {
+        commit_sha: lastCommitFiles.commit_sha,
+        commit_message: lastCommitFiles.commit_message,
+        author_name: lastCommitFiles.author_name,
+        author_email: lastCommitFiles.author_email,
+        committed_at: lastCommitFiles.committed_at,
+        total_additions: lastCommitFiles.total_additions,
+        total_deletions: lastCommitFiles.total_deletions,
+        total_changed_files: lastCommitFiles.total_changed_files,
+      },
+      files_changed: lastCommitFiles.files_changed,
+    });
+  } catch (error: any) {
+    console.error('Error fetching last commit:', error);
+    return c.json({ 
+      error: 'Failed to fetch last commit', 
+      details: error.message 
+    }, 500);
+  }
+});
+
 // History routes
 prRoutes.route('/', historyRoutes);
 
 // Export routes
 prRoutes.route('/', exportRoutes);
 
+// DELETE /api/pr/report/:org/:repo/:pr_number
+prRoutes.delete('/report/:org/:repo/:pr_number', async (c) => {
+  try {
+    const org = c.req.param('org');
+    const repo = c.req.param('repo');
+    const pr_number = parseInt(c.req.param('pr_number'));
+
+    const pr = await dbService.getPullRequest(org, repo, pr_number);
+    if (!pr) {
+      return c.json({ error: 'PR not found' }, 404);
+    }
+
+    // Ensure report exists
+    const report = await dbService.getReport(pr.id!);
+    if (!report) {
+      return c.json({ error: 'Report not found' }, 404);
+    }
+
+    await dbService.deleteReport(pr.id!);
+
+    return c.json({ message: 'Report deleted successfully' });
+  } catch (error: any) {
+    console.error('Error deleting report:', error);
+    return c.json({ error: 'Failed to delete report', details: error.message }, 500);
+  }
+});
+
 export default prRoutes;
+

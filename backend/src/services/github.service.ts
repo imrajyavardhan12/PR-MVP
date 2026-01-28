@@ -114,31 +114,65 @@ export class GitHubService {
     }));
   }
 
-  transformCommits(prId: number, commitsData: any[]) {
-    return commitsData.map(commit => {
-      // Calculate additions/deletions from files array since pulls.listCommits() doesn't include stats object
+  async transformCommits(org: string, repo: string, prId: number, commitsData: any[]) {
+    const transformed: any[] = [];
+
+    for (const commit of commitsData) {
       let additions = 0;
       let deletions = 0;
-      if (commit.files && Array.isArray(commit.files)) {
+      let changed_files = 0;
+
+      // If commit contains files with stats, use them
+      if (commit.files && Array.isArray(commit.files) && commit.files.length > 0) {
         commit.files.forEach((file: any) => {
           additions += file.additions || 0;
           deletions += file.deletions || 0;
         });
+        changed_files = commit.files.length;
       }
-      
-      return {
+
+      // If stats are present on the commit object (some endpoints include this), prefer them
+      if (commit.stats && typeof commit.stats === 'object') {
+        additions = commit.stats.additions || additions;
+        deletions = commit.stats.deletions || deletions;
+        changed_files = commit.stats.total || changed_files;
+      }
+
+      // Fallback: fetch commit details to get accurate stats
+      if (additions === 0 && deletions === 0 && (!commit.files || commit.files.length === 0)) {
+        try {
+          const { data: commitDetails } = await this.octokit.repos.getCommit({
+            owner: org,
+            repo: repo,
+            ref: commit.sha,
+          });
+          if (commitDetails && commitDetails.stats) {
+            additions = commitDetails.stats.additions || additions;
+            deletions = commitDetails.stats.deletions || deletions;
+            changed_files = (commitDetails.files && commitDetails.files.length) || changed_files;
+            // attach files to raw_data for later use if needed
+            commit.files = commitDetails.files || commit.files;
+          }
+        } catch (err: any) {
+          console.warn(`Warning: unable to fetch commit details for ${commit.sha}: ${err.message}`);
+        }
+      }
+
+      transformed.push({
         pr_id: prId,
         commit_sha: commit.sha,
-        commit_message: commit.commit.message,
-        author_name: commit.commit.author?.name || 'Unknown',
-        author_email: commit.commit.author?.email || '',
-        committed_at: commit.commit.author?.date,
+        commit_message: commit.commit?.message || commit.message || '',
+        author_name: commit.commit?.author?.name || commit.author?.name || 'Unknown',
+        author_email: commit.commit?.author?.email || commit.author?.email || '',
+        committed_at: commit.commit?.author?.date || commit.commit?.committer?.date || null,
         additions,
         deletions,
-        changed_files: commit.changed_files || 0,
+        changed_files: changed_files || (commit.changed_files || 0),
         raw_data: commit,
-      };
-    });
+      });
+    }
+
+    return transformed;
   }
 
   // Build summary from commit comparison
@@ -180,9 +214,9 @@ export class GitHubService {
     const lastCommit = commits[commits.length - 1];
 
     // Sum up stats from all transformed commits
-    const totalAdditions = commits.reduce((sum, c) => sum + (c.additions || 0), 0);
-    const totalDeletions = commits.reduce((sum, c) => sum + (c.deletions || 0), 0);
-    const totalChangedFiles = commits.reduce((sum, c) => sum + (c.changed_files || 0), 0);
+    let totalAdditions = commits.reduce((sum, c) => sum + (c.additions || 0), 0);
+    let totalDeletions = commits.reduce((sum, c) => sum + (c.deletions || 0), 0);
+    let totalChangedFiles = commits.reduce((sum, c) => sum + (c.changed_files || 0), 0);
     
     console.log(`Commit diff stats: +${totalAdditions}/-${totalDeletions} across ${totalChangedFiles} files`);
 
@@ -204,6 +238,10 @@ export class GitHubService {
       console.log(`Extracted ${Object.keys(filesChanged).length} files from PR files endpoint:`, 
         Object.keys(filesChanged).map(f => ({ file: f, hasPatch: filesChanged[f].patch.length > 0 }))
       );
+      // Recalculate totals from PR files when available - these are authoritative for additions/deletions
+      totalAdditions = Object.values(filesChanged).reduce((s: number, f: any) => s + (f.additions || 0), 0);
+      totalDeletions = Object.values(filesChanged).reduce((s: number, f: any) => s + (f.deletions || 0), 0);
+      totalChangedFiles = Object.keys(filesChanged).length;
     } else if (rawGithubCommits && rawGithubCommits.length > 0) {
       // Fallback to commit files if PR files not available
       rawGithubCommits.forEach((commitData: any) => {
@@ -258,4 +296,44 @@ export class GitHubService {
     
     return changes.length > 0 ? changes.join(' | ') : 'Modified';
   }
+
+  // Build last commit files data (Option B - only last commit)
+  buildLastCommitFiles(lastCommitData: any, filesData: any[]): any {
+    if (!lastCommitData) {
+      return {
+        commit_sha: null,
+        commit_message: null,
+        author_name: null,
+        author_email: null,
+        committed_at: null,
+        total_additions: 0,
+        total_deletions: 0,
+        total_changed_files: 0,
+        files_changed: [],
+      };
+    }
+
+    const files = filesData || [];
+    
+    return {
+      pr_id: null, // Will be set by caller
+      commit_sha: lastCommitData.sha,
+      commit_message: lastCommitData.commit?.message || lastCommitData.message || '',
+      author_name: lastCommitData.commit?.author?.name || lastCommitData.author?.name || 'Unknown',
+      author_email: lastCommitData.commit?.author?.email || lastCommitData.author?.email || '',
+      committed_at: lastCommitData.commit?.author?.date || lastCommitData.commit?.committer?.date || null,
+      total_additions: files.reduce((sum: number, f: any) => sum + (f.additions || 0), 0),
+      total_deletions: files.reduce((sum: number, f: any) => sum + (f.deletions || 0), 0),
+      total_changed_files: files.length,
+      files_changed: files.map((file: any) => ({
+        filename: file.filename,
+        additions: file.additions || 0,
+        deletions: file.deletions || 0,
+        changes: file.changes || 0,
+        status: file.status, // added, removed, modified, renamed, copied, etc.
+        patch: file.patch ? file.patch.slice(0, 2000) : '', // First 2000 chars
+      })),
+    };
+  }
 }
+

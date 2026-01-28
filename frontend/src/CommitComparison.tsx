@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronUp, Plus, Minus, FileText, Loader } from 'lucide-react';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface CommitData {
   commit_sha: string;
@@ -30,6 +32,23 @@ interface CommitDiff {
   summary?: string;
 }
 
+interface LastCommitData {
+  org: string;
+  repo: string;
+  pr_number: number;
+  lastCommit: {
+    commit_sha: string;
+    commit_message: string;
+    author_name: string;
+    author_email: string;
+    committed_at: string;
+    total_additions: number;
+    total_deletions: number;
+    total_changed_files: number;
+  };
+  files_changed: FileChange[];
+}
+
 interface CommitComparisonProps {
   org: string;
   repo: string;
@@ -39,30 +58,29 @@ interface CommitComparisonProps {
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export default function CommitComparison({ org, repo, prNumber }: CommitComparisonProps) {
-  const [commits, setCommits] = useState<CommitData[]>([]);
-  const [commitDiff, setCommitDiff] = useState<CommitDiff | null>(null);
+  const [lastCommitData, setLastCommitData] = useState<LastCommitData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    fetchCommitData();
+    fetchLastCommitData();
   }, [org, repo, prNumber]);
 
-  const fetchCommitData = async () => {
+  const fetchLastCommitData = async () => {
     try {
       setLoading(true);
+      // NEW: Fetch only last commit data
       const response = await fetch(
-        `${API_URL}/api/pr/commits/${org}/${repo}/${prNumber}`
+        `${API_URL}/api/pr/last-commit/${org}/${repo}/${prNumber}`
       );
 
       if (!response.ok) {
-        throw new Error('Failed to fetch commit data');
+        throw new Error('Failed to fetch last commit data');
       }
 
       const data = await response.json();
-      setCommits(data.commits || []);
-      setCommitDiff(data.commitDiff || null);
+      setLastCommitData(data);
     } catch (err: any) {
       setError(err.message || 'Error loading commit data');
     } finally {
@@ -115,6 +133,42 @@ export default function CommitComparison({ org, repo, prNumber }: CommitComparis
     return changes.length > 0 ? changes.join(' ... ') : 'Modified';
   };
 
+  const getLanguageFromFilename = (filename: string) => {
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    switch (ext) {
+      case 'py':
+        return 'python';
+      case 'js':
+        return 'javascript';
+      case 'ts':
+        return 'typescript';
+      case 'tsx':
+        return 'tsx';
+      case 'jsx':
+        return 'jsx';
+      case 'java':
+        return 'java';
+      case 'sql':
+        return 'sql';
+      case 'yml':
+      case 'yaml':
+        return 'yaml';
+      case 'json':
+        return 'json';
+      case 'sh':
+      case 'bash':
+        return 'bash';
+      case 'md':
+        return 'markdown';
+      case 'html':
+        return 'html';
+      case 'css':
+        return 'css';
+      default:
+        return 'text';
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -132,7 +186,7 @@ export default function CommitComparison({ org, repo, prNumber }: CommitComparis
     );
   }
 
-  if (!commitDiff || commits.length === 0) {
+  if (!lastCommitData) {
     return (
       <div className="text-center py-8 text-slate-500">
         No commit data available
@@ -140,24 +194,16 @@ export default function CommitComparison({ org, repo, prNumber }: CommitComparis
     );
   }
 
-  const firstCommit = commits[0];
-  const lastCommit = commits[commits.length - 1];
-
   return (
     <div className="space-y-6">
-      {/* Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
-          <p className="text-slate-600 text-sm font-medium">Total Commits</p>
-          <p className="text-3xl font-bold text-slate-900 mt-2">{commits.length}</p>
-        </div>
-
+      {/* Summary Stats - Last Commit Only */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
           <p className="text-emerald-700 text-sm font-medium flex items-center gap-2">
             <Plus className="w-4 h-4" /> Additions
           </p>
           <p className="text-3xl font-bold text-emerald-700 mt-2">
-            {commitDiff.total_additions}
+            {lastCommitData.lastCommit.total_additions}
           </p>
         </div>
 
@@ -166,80 +212,47 @@ export default function CommitComparison({ org, repo, prNumber }: CommitComparis
             <Minus className="w-4 h-4" /> Deletions
           </p>
           <p className="text-3xl font-bold text-red-700 mt-2">
-            {commitDiff.total_deletions}
+            {lastCommitData.lastCommit.total_deletions}
           </p>
         </div>
 
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <p className="text-blue-700 text-sm font-medium">Files Changed</p>
           <p className="text-3xl font-bold text-blue-700 mt-2">
-            {commitDiff.total_changed_files}
+            {lastCommitData.lastCommit.total_changed_files}
           </p>
         </div>
       </div>
 
-      {/* First vs Last Commit Comparison */}
+      {/* Last Commit Info Card */}
       <div className="bg-white border border-slate-200 rounded-lg p-6">
         <h3 className="text-lg font-semibold text-slate-900 mb-4">
-          First vs Last Commit
+          Last Commit
         </h3>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* First Commit */}
-          <div className="border border-slate-200 rounded-lg p-4">
-            <p className="text-sm font-medium text-slate-600 mb-3">First Commit</p>
-            <div className="space-y-2">
-              <div>
-                <p className="text-xs text-slate-500">SHA</p>
-                <p className="text-sm font-mono text-slate-700">
-                  {firstCommit.commit_sha.slice(0, 7)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">Author</p>
-                <p className="text-sm text-slate-700">{firstCommit.author_name}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">Date</p>
-                <p className="text-sm text-slate-700">
-                  {new Date(firstCommit.committed_at).toLocaleDateString()}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">Message</p>
-                <p className="text-sm text-slate-700 line-clamp-2">
-                  {firstCommit.commit_message}
-                </p>
-              </div>
+        <div className="border border-slate-200 rounded-lg p-4">
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs text-slate-500">SHA</p>
+              <p className="text-sm font-mono text-slate-700">
+                {lastCommitData.lastCommit.commit_sha.slice(0, 7)}
+              </p>
             </div>
-          </div>
-
-          {/* Last Commit */}
-          <div className="border border-slate-200 rounded-lg p-4">
-            <p className="text-sm font-medium text-slate-600 mb-3">Last Commit</p>
-            <div className="space-y-2">
-              <div>
-                <p className="text-xs text-slate-500">SHA</p>
-                <p className="text-sm font-mono text-slate-700">
-                  {lastCommit.commit_sha.slice(0, 7)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">Author</p>
-                <p className="text-sm text-slate-700">{lastCommit.author_name}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">Date</p>
-                <p className="text-sm text-slate-700">
-                  {new Date(lastCommit.committed_at).toLocaleDateString()}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">Message</p>
-                <p className="text-sm text-slate-700 line-clamp-2">
-                  {lastCommit.commit_message}
-                </p>
-              </div>
+            <div>
+              <p className="text-xs text-slate-500">Author</p>
+              <p className="text-sm text-slate-700">{lastCommitData.lastCommit.author_name}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Date</p>
+              <p className="text-sm text-slate-700">
+                {new Date(lastCommitData.lastCommit.committed_at).toLocaleDateString()}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Message</p>
+              <p className="text-sm text-slate-700 line-clamp-3">
+                {lastCommitData.lastCommit.commit_message}
+              </p>
             </div>
           </div>
         </div>
@@ -248,11 +261,11 @@ export default function CommitComparison({ org, repo, prNumber }: CommitComparis
       {/* Files Changed Table */}
       <div className="bg-white border border-slate-200 rounded-lg p-6">
         <h3 className="text-lg font-semibold text-slate-900 mb-4">
-          Files Changed ({commitDiff.files_changed.length})
+          Files Changed ({lastCommitData.files_changed.length})
         </h3>
 
         <div className="space-y-3">
-          {commitDiff.files_changed.map((file, idx) => (
+          {lastCommitData.files_changed.map((file, idx) => (
             <div
               key={idx}
               className="border border-slate-200 rounded-lg p-4 hover:bg-slate-50 transition-colors"
@@ -302,9 +315,22 @@ export default function CommitComparison({ org, repo, prNumber }: CommitComparis
               {expandedFiles.has(file.filename) && file.patch && (
                 <div className="mt-4 pt-4 border-t border-slate-200">
                   <p className="text-xs font-semibold text-slate-600 mb-2">Code Changes:</p>
-                  <pre className="text-xs bg-slate-900 text-slate-100 p-3 rounded overflow-auto max-h-80 font-mono">
+                  <SyntaxHighlighter
+                    style={oneLight}
+                    language={getLanguageFromFilename(file.filename)}
+                    showLineNumbers
+                    wrapLongLines
+                    customStyle={{
+                      margin: 0,
+                      borderRadius: 8,
+                      fontSize: '0.75rem',
+                      maxHeight: '20rem',
+                      overflow: 'auto',
+                      padding: '1rem',
+                    }}
+                  >
                     {file.patch}
-                  </pre>
+                  </SyntaxHighlighter>
                 </div>
               )}
             </div>
@@ -312,55 +338,8 @@ export default function CommitComparison({ org, repo, prNumber }: CommitComparis
         </div>
       </div>
 
-      {/* Commit Timeline */}
-      <div className="bg-white border border-slate-200 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-slate-900 mb-4">
-          All Commits ({commits.length})
-        </h3>
 
-        <div className="space-y-2">
-          {commits.map((commit, idx) => (
-            <div
-              key={idx}
-              className="flex items-start gap-4 p-3 rounded-lg hover:bg-slate-50 transition-colors"
-            >
-              <div className="pt-1">
-                <div className="w-3 h-3 rounded-full bg-blue-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-mono text-slate-600">
-                    {commit.commit_sha.slice(0, 7)}
-                  </span>
-                  <span className="text-sm text-slate-700 truncate">
-                    {commit.commit_message}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 mt-1 text-xs text-slate-500">
-                  <span>{commit.author_name}</span>
-                  <span>•</span>
-                  <span>
-                    {new Date(commit.committed_at).toLocaleDateString()}
-                  </span>
-                  <span>•</span>
-                  <span className="text-emerald-600">+{commit.additions}</span>
-                  <span className="text-red-600">-{commit.deletions}</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Summary Section */}
-      {commitDiff.summary && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-blue-900 mb-2">Summary</h3>
-          <p className="text-blue-800 text-sm leading-relaxed">
-            {commitDiff.summary}
-          </p>
-        </div>
-      )}
     </div>
   );
 }
+
