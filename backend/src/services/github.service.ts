@@ -297,6 +297,65 @@ export class GitHubService {
     return changes.length > 0 ? changes.join(' | ') : 'Modified';
   }
 
+  // Fetch review-driven changes (diff between first commit and last commit)
+  // This shows what changed AFTER the PR was initially raised (in response to reviewer feedback)
+  async fetchReviewDrivenChanges(org: string, repo: string, firstCommitSha: string, lastCommitSha: string) {
+    try {
+      const { data: comparisonData } = await this.octokit.repos.compareCommits({
+        owner: org,
+        repo: repo,
+        base: firstCommitSha,
+        head: lastCommitSha,
+      });
+      return comparisonData;
+    } catch (error: any) {
+      console.warn('Warning: Could not fetch review-driven changes:', error.message);
+      return null;
+    }
+  }
+
+  // Build review-driven changes summary from comparison data
+  buildReviewDrivenChanges(commits: any[], comparisonData: any | null): any {
+    const totalCommits = commits.length;
+    const reviewCommits = Math.max(0, totalCommits - 1); // commits after the first one
+    const hasReviewChanges = reviewCommits > 0;
+
+    if (!hasReviewChanges || !comparisonData) {
+      return {
+        first_commit_sha: commits[0]?.commit_sha || null,
+        last_commit_sha: commits[commits.length - 1]?.commit_sha || null,
+        total_commits: totalCommits,
+        review_commits: 0,
+        total_additions: 0,
+        total_deletions: 0,
+        total_changed_files: 0,
+        files_changed: [],
+        has_review_changes: false,
+      };
+    }
+
+    const files = comparisonData.files || [];
+    
+    return {
+      first_commit_sha: commits[0]?.commit_sha,
+      last_commit_sha: commits[commits.length - 1]?.commit_sha,
+      total_commits: totalCommits,
+      review_commits: reviewCommits,
+      total_additions: files.reduce((sum: number, f: any) => sum + (f.additions || 0), 0),
+      total_deletions: files.reduce((sum: number, f: any) => sum + (f.deletions || 0), 0),
+      total_changed_files: files.length,
+      files_changed: files.map((file: any) => ({
+        filename: file.filename,
+        additions: file.additions || 0,
+        deletions: file.deletions || 0,
+        changes: file.changes || 0,
+        status: file.status,
+        patch: file.patch ? file.patch.slice(0, 2000) : '',
+      })),
+      has_review_changes: true,
+    };
+  }
+
   // Build last commit files data (Option B - only last commit)
   buildLastCommitFiles(lastCommitData: any, filesData: any[]): any {
     if (!lastCommitData) {

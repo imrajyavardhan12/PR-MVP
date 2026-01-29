@@ -76,22 +76,32 @@ Generate EXACTLY these markdown sections in this order (use proper markdown synt
      * This proves the author addressed it with actual code
    - Status: one of: Addressed (with code evidence), Partially addressed, Open, Not stated
 
-5. ## Commit Summary (NEW!)
+5. ## Commit Summary
    - First commit: {message} ({additions} added, {deletions} deleted)
    - Last commit: {message} ({additions} added, {deletions} deleted)
    - Commits show: iterative approach with {count} changes, focusing on {files}
    - Key observations: (1-3 bullets about the implementation approach)
 
-6. ## Key Review Themes
+6. ## Review-Driven Changes (NEW!)
+   **This section shows ONLY the changes made AFTER the PR was initially raised - i.e., changes in response to reviewer feedback.**
+   - If has_review_changes is false: Show "No review-driven changes - PR was merged with original commit"
+   - If has_review_changes is true:
+     * Review commits: {review_commits} commits after initial submission
+     * Changes made in response to feedback: +{total_additions}/-{total_deletions} across {total_changed_files} files
+     * Key files modified after review: (list top 5 files from review_driven_changes)
+     * Summary: What the author changed based on reviewer suggestions
+   - This helps distinguish the author's original work from their response to feedback
+
+7. ## Key Review Themes
    - Group similar feedback by category (testing, naming, edge cases, performance, readability, API design, documentation, etc)
    - For each theme, note if it was addressed in code changes
    - 2-6 bullets
 
-7. ## Remaining Risks / Open Questions
+8. ## Remaining Risks / Open Questions
    - Only include items marked CHANGES_REQUESTED that don't have code evidence they were addressed
    - Only include unresolved concerns from reviewers
 
-8. ## Learnings & Feedback
+9. ## Learnings & Feedback
    - ### What went well
      (1-4 bullets about positive aspects of the PR/review process and implementation)
    - ### What to improve next time
@@ -124,8 +134,8 @@ Generate EXACTLY these markdown sections in this order (use proper markdown synt
     return response.choices[0]?.message?.content || 'Failed to generate report';
   }
 
-  private buildPrompt(data: PRAnalysisData & { commits?: any[]; commitDiff?: any }): string {
-    const { pr, comments, reviews, commits = [], commitDiff } = data;
+  private buildPrompt(data: PRAnalysisData & { commits?: any[]; commitDiff?: any; reviewDrivenChanges?: any }): string {
+    const { pr, comments, reviews, commits = [], commitDiff, reviewDrivenChanges } = data;
 
     // Count review statuses
     const approvedCount = reviews.filter(r => r.state === 'APPROVED').length;
@@ -227,6 +237,40 @@ Generate EXACTLY these markdown sections in this order (use proper markdown synt
       prompt += `\n## Comments\nNo comments found for this PR.\n`;
     }
 
+    // NEW: Add review-driven changes data (changes made after PR was raised)
+    if (reviewDrivenChanges) {
+      prompt += `\n## Review-Driven Changes Data\n`;
+      prompt += `This shows ONLY the changes made AFTER the PR was initially raised (in response to reviewer feedback).\n`;
+      prompt += `Has Review Changes: ${reviewDrivenChanges.has_review_changes}\n`;
+      prompt += `Total Commits: ${reviewDrivenChanges.total_commits}\n`;
+      prompt += `Review Commits (after initial): ${reviewDrivenChanges.review_commits}\n`;
+      
+      if (reviewDrivenChanges.has_review_changes) {
+        prompt += `First Commit SHA: ${reviewDrivenChanges.first_commit_sha}\n`;
+        prompt += `Last Commit SHA: ${reviewDrivenChanges.last_commit_sha}\n`;
+        prompt += `Review-Driven Additions: +${reviewDrivenChanges.total_additions}\n`;
+        prompt += `Review-Driven Deletions: -${reviewDrivenChanges.total_deletions}\n`;
+        prompt += `Review-Driven Files Changed: ${reviewDrivenChanges.total_changed_files}\n`;
+
+        let reviewFilesChanged = reviewDrivenChanges.files_changed;
+        if (typeof reviewFilesChanged === 'string') {
+          reviewFilesChanged = JSON.parse(reviewFilesChanged);
+        }
+
+        if (reviewFilesChanged && Array.isArray(reviewFilesChanged) && reviewFilesChanged.length > 0) {
+          prompt += `\n### Files Modified After Review\n`;
+          reviewFilesChanged.slice(0, 10).forEach((file: any) => {
+            prompt += `- ${file.filename} (${file.status}): +${file.additions}/-${file.deletions}\n`;
+          });
+          if (reviewFilesChanged.length > 10) {
+            prompt += `- ... and ${reviewFilesChanged.length - 10} more files\n`;
+          }
+        }
+      } else {
+        prompt += `No review-driven changes - PR was merged with original commit only.\n`;
+      }
+    }
+
     prompt += `\n## Important Instructions for Report Generation\n`;
     prompt += `1. Use the exact PR metadata provided above (org, repo, pr_number, state, dates) - do NOT infer or assume these values\n`;
     prompt += `2. CRITICAL - Use the COMMIT CHANGES data to verify what was actually implemented:\n`;
@@ -242,6 +286,7 @@ Generate EXACTLY these markdown sections in this order (use proper markdown synt
     prompt += `5. Group related concerns from multiple reviewers into single rows when appropriate\n`;
     prompt += `6. Use actual timestamps from created_at/updated_at fields, do NOT write "Unknown"\n`;
     prompt += `7. Do NOT invent or assume data - use the COMMIT DATA as evidence of what was implemented\n`;
+    prompt += `8. In "Review-Driven Changes" section, use the REVIEW-DRIVEN CHANGES DATA to show what was changed after initial PR submission\n`;
 
     return prompt;
   }

@@ -93,17 +93,36 @@ prRoutes.post('/report', async (c) => {
       );
       await dbService.saveCommitDiff(prId, fallbackDiff);
     }
+
+    // NEW: Calculate and save review-driven changes (diff between first and last commit)
+    // This shows what changed AFTER the PR was initially raised (in response to reviewer feedback)
+    console.log('Calculating review-driven changes...');
+    if (commits.length > 1) {
+      const firstCommitSha = commits[0].commit_sha;
+      const lastCommitSha = commits[commits.length - 1].commit_sha;
+      const reviewComparison = await githubService.fetchReviewDrivenChanges(org, repo, firstCommitSha, lastCommitSha);
+      const reviewChanges = githubService.buildReviewDrivenChanges(commits, reviewComparison);
+      await dbService.saveReviewDrivenChanges(prId, reviewChanges);
+      console.log(`Review-driven changes: ${reviewChanges.review_commits} commits with +${reviewChanges.total_additions}/-${reviewChanges.total_deletions} across ${reviewChanges.total_changed_files} files`);
+    } else {
+      // Single commit PR - no review-driven changes
+      const noReviewChanges = githubService.buildReviewDrivenChanges(commits, null);
+      await dbService.saveReviewDrivenChanges(prId, noReviewChanges);
+      console.log('Single commit PR - no review-driven changes');
+    }
     }
 
     // Generate LLM report (with commit context for better analysis)
     console.log('Generating LLM report...');
     const commitDiffData = await dbService.getCommitDiff(prId);
+    const reviewDrivenChangesData = await dbService.getReviewDrivenChanges(prId);
     const reportContent = await openaiService.generatePRReport({
       pr: prData,
       comments,
       reviews,
       commits: commits || [],
       commitDiff: commitDiffData,
+      reviewDrivenChanges: reviewDrivenChangesData,
     });
 
     // Save report
@@ -251,6 +270,49 @@ prRoutes.get('/last-commit/:org/:repo/:pr_number', async (c) => {
     console.error('Error fetching last commit:', error);
     return c.json({ 
       error: 'Failed to fetch last commit', 
+      details: error.message 
+    }, 500);
+  }
+});
+
+// GET /api/pr/review-changes/:org/:repo/:pr_number
+// Get ONLY the review-driven changes (changes made after the PR was initially raised)
+prRoutes.get('/review-changes/:org/:repo/:pr_number', async (c) => {
+  try {
+    const org = c.req.param('org');
+    const repo = c.req.param('repo');
+    const pr_number = parseInt(c.req.param('pr_number'));
+
+    const pr = await dbService.getPullRequest(org, repo, pr_number);
+    
+    if (!pr) {
+      return c.json({ error: 'PR not found' }, 404);
+    }
+
+    const reviewChanges = await dbService.getReviewDrivenChanges(pr.id!);
+
+    if (!reviewChanges) {
+      return c.json({ error: 'Review changes data not found' }, 404);
+    }
+
+    return c.json({
+      org,
+      repo,
+      pr_number,
+      has_review_changes: reviewChanges.has_review_changes,
+      total_commits: reviewChanges.total_commits,
+      review_commits: reviewChanges.review_commits,
+      first_commit_sha: reviewChanges.first_commit_sha,
+      last_commit_sha: reviewChanges.last_commit_sha,
+      total_additions: reviewChanges.total_additions,
+      total_deletions: reviewChanges.total_deletions,
+      total_changed_files: reviewChanges.total_changed_files,
+      files_changed: reviewChanges.files_changed || [],
+    });
+  } catch (error: any) {
+    console.error('Error fetching review changes:', error);
+    return c.json({ 
+      error: 'Failed to fetch review changes', 
       details: error.message 
     }, 500);
   }

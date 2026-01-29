@@ -423,5 +423,38 @@ export class DatabaseService {
     }
     return data;
   }
+
+  // Review-Driven Changes methods (changes made after PR was raised, in response to reviewer feedback)
+  async saveReviewDrivenChanges(prId: number, reviewData: any): Promise<void> {
+    await sql`
+      INSERT INTO review_driven_changes (pr_id, first_commit_sha, last_commit_sha, total_commits, review_commits, total_additions, total_deletions, total_changed_files, files_changed, has_review_changes)
+      VALUES (${prId}, ${reviewData.first_commit_sha}, ${reviewData.last_commit_sha}, ${reviewData.total_commits}, ${reviewData.review_commits}, ${reviewData.total_additions}, ${reviewData.total_deletions}, ${reviewData.total_changed_files}, ${JSON.stringify(reviewData.files_changed)}, ${reviewData.has_review_changes})
+      ON CONFLICT (pr_id) 
+      DO UPDATE SET 
+        first_commit_sha = EXCLUDED.first_commit_sha,
+        last_commit_sha = EXCLUDED.last_commit_sha,
+        total_commits = EXCLUDED.total_commits,
+        review_commits = EXCLUDED.review_commits,
+        total_additions = EXCLUDED.total_additions,
+        total_deletions = EXCLUDED.total_deletions,
+        total_changed_files = EXCLUDED.total_changed_files,
+        files_changed = EXCLUDED.files_changed,
+        has_review_changes = EXCLUDED.has_review_changes
+    `;
+  }
+
+  async getReviewDrivenChanges(prId: number): Promise<any | null> {
+    const result = await sql`
+      SELECT * FROM review_driven_changes WHERE pr_id = ${prId}
+    `;
+    if (result.length === 0) return null;
+    
+    const data = result[0] as any;
+    // Parse files_changed if it's a JSON string
+    if (data.files_changed && typeof data.files_changed === 'string') {
+      data.files_changed = JSON.parse(data.files_changed);
+    }
+    return data;
+  }
 }
 

@@ -123,6 +123,23 @@ CREATE TABLE IF NOT EXISTS last_commit_files (
     UNIQUE(pr_id)
 );
 
+-- Review-Driven Changes table (changes made after PR was raised, in response to reviewer feedback)
+CREATE TABLE IF NOT EXISTS review_driven_changes (
+    id SERIAL PRIMARY KEY,
+    pr_id INTEGER NOT NULL REFERENCES pull_requests(id) ON DELETE CASCADE,
+    first_commit_sha VARCHAR(40) NOT NULL,
+    last_commit_sha VARCHAR(40) NOT NULL,
+    total_commits INTEGER DEFAULT 0,
+    review_commits INTEGER DEFAULT 0, -- commits after the first one (review-driven)
+    total_additions INTEGER DEFAULT 0,
+    total_deletions INTEGER DEFAULT 0,
+    total_changed_files INTEGER DEFAULT 0,
+    files_changed JSONB, -- Array of {filename, additions, deletions, status, patch}
+    has_review_changes BOOLEAN DEFAULT FALSE, -- true if there are commits after the first
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(pr_id)
+);
+
 -- Indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_pr_org_repo ON pull_requests(org, repo);
 CREATE INDEX IF NOT EXISTS idx_pr_comments_pr_id ON pr_comments(pr_id);
@@ -139,3 +156,4 @@ CREATE INDEX IF NOT EXISTS idx_shared_reports_expires_at ON shared_reports(expir
 CREATE INDEX IF NOT EXISTS idx_pr_commits_pr_id ON pr_commits(pr_id);
 CREATE INDEX IF NOT EXISTS idx_commit_diffs_pr_id ON commit_diffs(pr_id);
 CREATE INDEX IF NOT EXISTS idx_last_commit_files_pr_id ON last_commit_files(pr_id);
+CREATE INDEX IF NOT EXISTS idx_review_driven_changes_pr_id ON review_driven_changes(pr_id);

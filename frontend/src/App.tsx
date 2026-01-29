@@ -188,7 +188,6 @@ function App() {
   const handleBulkSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBulkError('');
-    setBatchToken(null);
     setBatchProgress(null);
     setBatchResults([]);
     setBulkLoading(true);
