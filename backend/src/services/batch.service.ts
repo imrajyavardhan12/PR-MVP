@@ -9,8 +9,8 @@ export class BatchService {
   private githubService: GitHubService;
   private openaiService: OpenAIService;
   private concurrencyLimit: number = 2;
-  private prTimeoutMs: number = 30000; // 30 seconds per PR
-  private batchTimeoutMs: number = 600000; // 10 minutes total
+  private prTimeoutMs: number = 60000; // 60 seconds per PR (increased for commit/review analysis)
+  private batchTimeoutMs: number = 900000; // 15 minutes total
 
   constructor(githubToken: string, openaiKey: string, concurrencyLimit: number = 2) {
     this.dbService = new DatabaseService();
@@ -141,11 +141,74 @@ export class BatchService {
         await this.dbService.saveReview(review);
       }
 
-      // Generate report
+      // Save commits
+      let commits: any[] = [];
+      if (githubData.commits && githubData.commits.length > 0) {
+        commits = await this.githubService.transformCommits(org, repo, prId, githubData.commits);
+        await this.dbService.saveCommits(commits);
+
+        // Save last commit files
+        if (commits.length > 0) {
+          const lastCommitRawData = githubData.commits[githubData.commits.length - 1];
+          const lastCommitFiles = this.githubService.buildLastCommitFiles(lastCommitRawData, githubData.files);
+          lastCommitFiles.pr_id = prId;
+          await this.dbService.saveLastCommitFiles(lastCommitFiles);
+        }
+
+        // Fetch commit comparison (first vs last commit)
+        const baseRef = githubData.pr.base.ref;
+        const headRef = githubData.pr.head.ref;
+        const comparison = await this.githubService.fetchCommitComparison(org, repo, baseRef, headRef);
+
+        if (comparison && Array.isArray(comparison.files) && comparison.files.length > 0) {
+          const diffSummary = this.githubService.buildCommitDiffSummary(comparison);
+          await this.dbService.saveCommitDiff(prId, diffSummary);
+        } else {
+          const fallbackDiff = this.githubService.buildCommitDiffFromMetadata(
+            commits,
+            githubData.commits,
+            githubData.files
+          );
+          await this.dbService.saveCommitDiff(prId, fallbackDiff);
+        }
+
+        // Calculate and save review-driven changes
+        const prFileNames = new Set(githubData.files.map((f: any) => f.filename));
+        
+        // Filter out merge commits
+        const nonMergeCommits = commits.filter((c: any) => {
+          const message = c.commit_message || '';
+          const isMerge = message.toLowerCase().startsWith('merge ') || 
+                          message.toLowerCase().includes('merge branch') ||
+                          message.toLowerCase().includes('merge pull request');
+          const parentCount = c.raw_data?.parents?.length || 1;
+          return !isMerge && parentCount <= 1;
+        });
+        
+        const effectiveCommits = nonMergeCommits.length > 0 ? nonMergeCommits : commits;
+        
+        if (effectiveCommits.length > 1) {
+          const firstCommitSha = effectiveCommits[0].commit_sha;
+          const lastCommitSha = effectiveCommits[effectiveCommits.length - 1].commit_sha;
+          const reviewComparison = await this.githubService.fetchReviewDrivenChanges(org, repo, firstCommitSha, lastCommitSha);
+          const reviewChanges = this.githubService.buildReviewDrivenChanges(effectiveCommits, reviewComparison, prFileNames);
+          await this.dbService.saveReviewDrivenChanges(prId, reviewChanges);
+        } else {
+          const noReviewChanges = this.githubService.buildReviewDrivenChanges(effectiveCommits, null, prFileNames);
+          await this.dbService.saveReviewDrivenChanges(prId, noReviewChanges);
+        }
+      }
+
+      // Generate LLM report (with commit context for better analysis)
+      const commitDiffData = await this.dbService.getCommitDiff(prId);
+      const reviewDrivenChangesData = await this.dbService.getReviewDrivenChanges(prId);
       const reportContent = await this.openaiService.generatePRReport({
         pr: prData,
         comments,
         reviews,
+        commits: commits || [],
+        commitDiff: commitDiffData,
+        reviewDrivenChanges: reviewDrivenChangesData,
       });
 
       await this.dbService.saveReport({
