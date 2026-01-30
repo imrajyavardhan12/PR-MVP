@@ -23,7 +23,8 @@ import {
   History,
   Share2,
   FileJson,
-  FileText
+  FileText,
+  Trash2
 } from 'lucide-react';
 import HistoryDashboard from './HistoryDashboard';
 import CommitComparison from './CommitComparison';
@@ -317,12 +318,56 @@ function App() {
       {/* Header */}
       <header className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-6">
-          <h1 className="text-2xl font-semibold text-gray-800 mb-1">
-            PR Analysis Dashboard
-          </h1>
-          <p className="text-gray-500 text-sm">
-            AI-powered insights for GitHub pull requests - Analyze discussions, reviews, and learnings
-          </p>
+          <div className="flex items-start justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold text-gray-800 mb-1">
+                PR Analysis Dashboard
+              </h1>
+              <p className="text-gray-500 text-sm">
+                AI-powered insights for GitHub pull requests - Analyze discussions, reviews, and learnings
+              </p>
+            </div>
+            <button
+              onClick={async () => {
+                const confirmDelete = window.confirm(
+                  'DELETE ALL DATA?\n\nThis will permanently delete ALL pull requests, reports, comments, reviews, and batch analyses from the database.\n\nThis action cannot be undone!'
+                );
+                if (!confirmDelete) return;
+
+                const doubleConfirm = window.confirm(
+                  'Are you absolutely sure? This will delete EVERYTHING.'
+                );
+                if (!doubleConfirm) return;
+
+                try {
+                  const resp = await fetch(`${API_URL}/api/pr/all`, {
+                    method: 'DELETE',
+                  });
+
+                  if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.error || 'Failed to delete all data');
+                  }
+
+                  // Clear all UI state
+                  setResult(null);
+                  setBatchResults([]);
+                  setBatchProgress(null);
+                  setBulkInput('');
+                  setPrInput('');
+                  setError('All data deleted successfully');
+                  setTimeout(() => setError(''), 3000);
+                } catch (err: any) {
+                  setError(err.message || 'Failed to delete all data');
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+              title="Delete all data from database"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete All Data
+            </button>
+          </div>
         </div>
       </header>
 
@@ -532,10 +577,10 @@ function App() {
               </table>
             </div>
 
-            {/* Commit Comparison */}
+            {/* Review-Driven Changes (Changes After PR Was Raised) */}
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm p-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-4">
-                Commit Comparison (First vs Last)
+                Review-Driven Changes (After First Commit)
               </h2>
               <CommitComparison 
                 org={result.pr.org} 

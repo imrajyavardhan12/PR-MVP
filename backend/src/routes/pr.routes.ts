@@ -351,5 +351,16 @@ prRoutes.delete('/report/:org/:repo/:pr_number', async (c) => {
   }
 });
 
+// DELETE /api/pr/all - Delete all data from the database
+prRoutes.delete('/all', async (c) => {
+  try {
+    await dbService.deleteAllData();
+    return c.json({ message: 'All data deleted successfully' });
+  } catch (error: any) {
+    console.error('Error deleting all data:', error);
+    return c.json({ error: 'Failed to delete all data', details: error.message }, 500);
+  }
+});
+
 export default prRoutes;
 

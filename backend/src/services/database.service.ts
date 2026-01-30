@@ -456,5 +456,24 @@ export class DatabaseService {
     }
     return data;
   }
+
+  // Delete all data from all tables
+  async deleteAllData(): Promise<void> {
+    // Delete in order to respect foreign key constraints
+    // Or use TRUNCATE with CASCADE
+    await sql`TRUNCATE TABLE 
+      shared_reports, 
+      pr_reports, 
+      pr_comments, 
+      pr_reviews, 
+      pr_commits, 
+      commit_diffs, 
+      last_commit_files, 
+      review_driven_changes, 
+      batch_analyses, 
+      pull_requests 
+      RESTART IDENTITY CASCADE`;
+    console.log('All data deleted from database');
+  }
 }
 
