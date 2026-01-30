@@ -208,6 +208,9 @@ export default function CommitComparison({ org, repo, prNumber }: CommitComparis
             <p className="text-blue-700 text-sm mt-1">
               These are the changes made <strong>after the PR was initially raised</strong> - i.e., modifications made in response to reviewer feedback.
             </p>
+            <p className="text-blue-600 text-xs mt-2">
+              <strong>Note:</strong> These numbers measure iteration/churn within the PR and may exceed total PR changes if code was added then removed during review.
+            </p>
           </div>
         </div>
       </div>
