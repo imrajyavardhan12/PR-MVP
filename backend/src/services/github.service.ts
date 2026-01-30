@@ -314,33 +314,19 @@ export class GitHubService {
     }
   }
 
-  // Build review-driven changes summary from commits (excluding merge commits)
-  // This aggregates file changes from commits AFTER the first one, filtering out merge commits
+  // Build review-driven changes summary using GitHub compare API (gives NET change)
+  // This shows the actual difference between first commit and last non-merge commit
   buildReviewDrivenChanges(commits: any[], comparisonData: any | null): any {
     const totalCommits = commits.length;
     
-    // Filter out merge commits (commits with "Merge" in message or with 2+ parents)
-    const nonMergeCommits = commits.filter((c: any) => {
-      const message = c.commit_message || '';
-      const isMerge = message.toLowerCase().startsWith('merge ') || 
-                      message.toLowerCase().includes('merge branch') ||
-                      message.toLowerCase().includes('merge pull request');
-      // Also check raw_data for parents count
-      const parentCount = c.raw_data?.parents?.length || 1;
-      return !isMerge && parentCount <= 1;
-    });
-
-    // If no non-merge commits, use all commits
-    const effectiveCommits = nonMergeCommits.length > 0 ? nonMergeCommits : commits;
-    
-    // Review commits = all commits after the first non-merge commit
-    const reviewCommits = effectiveCommits.slice(1); // commits after the first one
+    // commits passed in should already be filtered (non-merge commits)
+    const reviewCommits = commits.slice(1); // commits after the first one
     const hasReviewChanges = reviewCommits.length > 0;
 
     if (!hasReviewChanges) {
       return {
-        first_commit_sha: effectiveCommits[0]?.commit_sha || commits[0]?.commit_sha || null,
-        last_commit_sha: effectiveCommits[effectiveCommits.length - 1]?.commit_sha || commits[commits.length - 1]?.commit_sha || null,
+        first_commit_sha: commits[0]?.commit_sha || null,
+        last_commit_sha: commits[commits.length - 1]?.commit_sha || null,
         total_commits: totalCommits,
         review_commits: 0,
         total_additions: 0,
@@ -351,7 +337,33 @@ export class GitHubService {
       };
     }
 
-    // Aggregate file changes from review commits (commits after first one, excluding merges)
+    // PRIORITY: Use comparison API data (gives NET change between first and last commit)
+    // This is more accurate than summing individual commit stats
+    if (comparisonData?.files) {
+      const files = comparisonData.files || [];
+      console.log(`Using GitHub compare API: ${files.length} files changed between first and last commit`);
+      return {
+        first_commit_sha: commits[0]?.commit_sha,
+        last_commit_sha: commits[commits.length - 1]?.commit_sha,
+        total_commits: totalCommits,
+        review_commits: reviewCommits.length,
+        total_additions: files.reduce((sum: number, f: any) => sum + (f.additions || 0), 0),
+        total_deletions: files.reduce((sum: number, f: any) => sum + (f.deletions || 0), 0),
+        total_changed_files: files.length,
+        files_changed: files.map((file: any) => ({
+          filename: file.filename,
+          additions: file.additions || 0,
+          deletions: file.deletions || 0,
+          changes: file.changes || 0,
+          status: file.status,
+          patch: file.patch ? file.patch.slice(0, 2000) : '',
+        })),
+        has_review_changes: true,
+      };
+    }
+
+    // Fallback: Aggregate file changes from individual commits (less accurate)
+    console.log('Warning: Compare API failed, falling back to commit aggregation');
     const filesChanged: Record<string, any> = {};
     let totalAdditions = 0;
     let totalDeletions = 0;
@@ -374,47 +386,20 @@ export class GitHubService {
           filesChanged[filename].additions += file.additions || 0;
           filesChanged[filename].deletions += file.deletions || 0;
           filesChanged[filename].changes += file.changes || 0;
-          // Keep the latest patch
           if (file.patch && file.patch.length > filesChanged[filename].patch.length) {
             filesChanged[filename].patch = file.patch.slice(0, 2000);
           }
         }
       }
-      // Also use commit stats
       totalAdditions += commit.additions || 0;
       totalDeletions += commit.deletions || 0;
     }
 
     const filesArray = Object.values(filesChanged);
-    
-    // If we couldn't get file-level data from commits, fall back to comparison data
-    // but only if comparison data doesn't include merge commit changes
-    if (filesArray.length === 0 && comparisonData?.files) {
-      console.log('Warning: Using comparison data as fallback (may include merge commits)');
-      const files = comparisonData.files || [];
-      return {
-        first_commit_sha: effectiveCommits[0]?.commit_sha,
-        last_commit_sha: effectiveCommits[effectiveCommits.length - 1]?.commit_sha,
-        total_commits: totalCommits,
-        review_commits: reviewCommits.length,
-        total_additions: files.reduce((sum: number, f: any) => sum + (f.additions || 0), 0),
-        total_deletions: files.reduce((sum: number, f: any) => sum + (f.deletions || 0), 0),
-        total_changed_files: files.length,
-        files_changed: files.map((file: any) => ({
-          filename: file.filename,
-          additions: file.additions || 0,
-          deletions: file.deletions || 0,
-          changes: file.changes || 0,
-          status: file.status,
-          patch: file.patch ? file.patch.slice(0, 2000) : '',
-        })),
-        has_review_changes: true,
-      };
-    }
 
     return {
-      first_commit_sha: effectiveCommits[0]?.commit_sha,
-      last_commit_sha: effectiveCommits[effectiveCommits.length - 1]?.commit_sha,
+      first_commit_sha: commits[0]?.commit_sha,
+      last_commit_sha: commits[commits.length - 1]?.commit_sha,
       total_commits: totalCommits,
       review_commits: reviewCommits.length,
       total_additions: filesArray.reduce((sum, f) => sum + f.additions, 0) || totalAdditions,

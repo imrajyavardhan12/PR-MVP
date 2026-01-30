@@ -94,21 +94,35 @@ prRoutes.post('/report', async (c) => {
       await dbService.saveCommitDiff(prId, fallbackDiff);
     }
 
-    // NEW: Calculate and save review-driven changes (diff between first and last commit)
+    // NEW: Calculate and save review-driven changes (diff between first and last non-merge commit)
     // This shows what changed AFTER the PR was initially raised (in response to reviewer feedback)
     console.log('Calculating review-driven changes...');
-    if (commits.length > 1) {
-      const firstCommitSha = commits[0].commit_sha;
-      const lastCommitSha = commits[commits.length - 1].commit_sha;
+    
+    // Filter out merge commits to get actual author work
+    const nonMergeCommits = commits.filter((c: any) => {
+      const message = c.commit_message || '';
+      const isMerge = message.toLowerCase().startsWith('merge ') || 
+                      message.toLowerCase().includes('merge branch') ||
+                      message.toLowerCase().includes('merge pull request');
+      const parentCount = c.raw_data?.parents?.length || 1;
+      return !isMerge && parentCount <= 1;
+    });
+    
+    const effectiveCommits = nonMergeCommits.length > 0 ? nonMergeCommits : commits;
+    
+    if (effectiveCommits.length > 1) {
+      const firstCommitSha = effectiveCommits[0].commit_sha;
+      const lastCommitSha = effectiveCommits[effectiveCommits.length - 1].commit_sha;
+      console.log(`Comparing first commit ${firstCommitSha.slice(0,7)} to last non-merge commit ${lastCommitSha.slice(0,7)}`);
       const reviewComparison = await githubService.fetchReviewDrivenChanges(org, repo, firstCommitSha, lastCommitSha);
-      const reviewChanges = githubService.buildReviewDrivenChanges(commits, reviewComparison);
+      const reviewChanges = githubService.buildReviewDrivenChanges(effectiveCommits, reviewComparison);
       await dbService.saveReviewDrivenChanges(prId, reviewChanges);
       console.log(`Review-driven changes: ${reviewChanges.review_commits} commits with +${reviewChanges.total_additions}/-${reviewChanges.total_deletions} across ${reviewChanges.total_changed_files} files`);
     } else {
       // Single commit PR - no review-driven changes
-      const noReviewChanges = githubService.buildReviewDrivenChanges(commits, null);
+      const noReviewChanges = githubService.buildReviewDrivenChanges(effectiveCommits, null);
       await dbService.saveReviewDrivenChanges(prId, noReviewChanges);
-      console.log('Single commit PR - no review-driven changes');
+      console.log('Single commit PR (or all merge commits) - no review-driven changes');
     }
     }
 
