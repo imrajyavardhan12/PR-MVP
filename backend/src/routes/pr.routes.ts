@@ -96,7 +96,12 @@ prRoutes.post('/report', async (c) => {
 
     // NEW: Calculate and save review-driven changes (diff between first and last non-merge commit)
     // This shows what changed AFTER the PR was initially raised (in response to reviewer feedback)
+    // IMPORTANT: Only count files that are actually part of this PR (not from merged main branch)
     console.log('Calculating review-driven changes...');
+    
+    // Get the list of files that are actually part of this PR
+    const prFileNames = new Set(githubData.files.map((f: any) => f.filename));
+    console.log(`PR contains ${prFileNames.size} files: ${Array.from(prFileNames).slice(0, 5).join(', ')}${prFileNames.size > 5 ? '...' : ''}`);
     
     // Filter out merge commits to get actual author work
     const nonMergeCommits = commits.filter((c: any) => {
@@ -115,12 +120,13 @@ prRoutes.post('/report', async (c) => {
       const lastCommitSha = effectiveCommits[effectiveCommits.length - 1].commit_sha;
       console.log(`Comparing first commit ${firstCommitSha.slice(0,7)} to last non-merge commit ${lastCommitSha.slice(0,7)}`);
       const reviewComparison = await githubService.fetchReviewDrivenChanges(org, repo, firstCommitSha, lastCommitSha);
-      const reviewChanges = githubService.buildReviewDrivenChanges(effectiveCommits, reviewComparison);
+      // Pass prFileNames to filter out changes from merged branches
+      const reviewChanges = githubService.buildReviewDrivenChanges(effectiveCommits, reviewComparison, prFileNames);
       await dbService.saveReviewDrivenChanges(prId, reviewChanges);
       console.log(`Review-driven changes: ${reviewChanges.review_commits} commits with +${reviewChanges.total_additions}/-${reviewChanges.total_deletions} across ${reviewChanges.total_changed_files} files`);
     } else {
       // Single commit PR - no review-driven changes
-      const noReviewChanges = githubService.buildReviewDrivenChanges(effectiveCommits, null);
+      const noReviewChanges = githubService.buildReviewDrivenChanges(effectiveCommits, null, prFileNames);
       await dbService.saveReviewDrivenChanges(prId, noReviewChanges);
       console.log('Single commit PR (or all merge commits) - no review-driven changes');
     }

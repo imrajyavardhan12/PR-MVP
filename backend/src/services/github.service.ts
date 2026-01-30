@@ -316,7 +316,8 @@ export class GitHubService {
 
   // Build review-driven changes summary using GitHub compare API (gives NET change)
   // This shows the actual difference between first commit and last non-merge commit
-  buildReviewDrivenChanges(commits: any[], comparisonData: any | null): any {
+  // prFileNames: Set of filenames that are actually part of this PR (filters out merge noise)
+  buildReviewDrivenChanges(commits: any[], comparisonData: any | null, prFileNames?: Set<string>): any {
     const totalCommits = commits.length;
     
     // commits passed in should already be filtered (non-merge commits)
@@ -338,9 +339,18 @@ export class GitHubService {
     }
 
     // PRIORITY: Use comparison API data (gives NET change between first and last commit)
-    // This is more accurate than summing individual commit stats
+    // Filter to only include files that are actually part of this PR
     if (comparisonData?.files) {
-      const files = comparisonData.files || [];
+      let files = comparisonData.files || [];
+      
+      // CRITICAL: Filter out files that are NOT part of this PR
+      // These come from merge commits that pulled in changes from main branch
+      if (prFileNames && prFileNames.size > 0) {
+        const beforeFilter = files.length;
+        files = files.filter((f: any) => prFileNames.has(f.filename));
+        console.log(`Filtered files: ${beforeFilter} -> ${files.length} (only PR files)`);
+      }
+      
       console.log(`Using GitHub compare API: ${files.length} files changed between first and last commit`);
       return {
         first_commit_sha: commits[0]?.commit_sha,
@@ -373,6 +383,12 @@ export class GitHubService {
       if (rawData?.files && Array.isArray(rawData.files)) {
         for (const file of rawData.files) {
           const filename = file.filename;
+          
+          // Skip files that are not part of this PR
+          if (prFileNames && prFileNames.size > 0 && !prFileNames.has(filename)) {
+            continue;
+          }
+          
           if (!filesChanged[filename]) {
             filesChanged[filename] = {
               filename,
